@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unicode 快闪 · 防崩溃</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f5f5f7;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #1d1d1f;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  h1 { font-size: 22px; margin: 0 0 8px; font-weight: 600; }
+  .subtitle { font-size: 13px; color: #86868b; margin-bottom: 24px; }
+
+  .panel {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  .panel-title {
+    font-size: 13px; font-weight: 600; color: #86868b;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
+  }
+
+  .canvas-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+    border-radius: 10px;
+    padding: 20px;
+  }
+  #flashCanvas { display: block; }
+  .flash-info {
+    font-size: 14px;
+    color: #86868b;
+    margin-top: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 1px;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    align-items: center;
+  }
+  .controls button {
+    font-size: 14px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    background: #0071e3;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .controls button:active { background: #005bb5; }
+  .controls button.secondary {
+    background: #e8e8ed;
+    color: #1d1d1f;
+  }
+  .controls button.secondary:active { background: #d2d2d7; }
+  .controls button.danger { background: #ff3b30; }
+  .controls button.danger:active { background: #d70015; }
+  .controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .controls label {
+    font-size: 13px;
+    color: #86868b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .controls input[type="text"],
+  .controls input[type="number"] {
+    font-size: 14px;
+    padding: 6px 8px;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    font-family: ui-monospace, monospace;
+  }
+  .controls input[type="number"] { width: 90px; }
+
+  .progress-wrap {
+    width: 100%;
+    height: 6px;
+    background: #e8e8ed;
+    border-radius: 3px;
+    margin-top: 14px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #0071e3;
+    transition: width 0.1s linear;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: #86868b;
+    margin-top: 8px;
+  }
+
+  .chain-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #e8e8ed;
+    border-radius: 8px;
+    padding: 8px;
+    background: #fafafa;
+  }
+  .chain-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #e8e8ed;
+  }
+  .chain-item .index {
+    font-size: 12px; color: #86868b;
+    font-family: ui-monospace, monospace;
+    width: 28px; text-align: right; flex-shrink: 0;
+  }
+  .chain-item .name {
+    flex: 1; font-size: 14px;
+    font-family: ui-monospace, monospace;
+    min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chain-item .badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: #e8f5e9; color: #2e7d32; flex-shrink: 0;
+  }
+  .chain-item .badge.file {
+    background: #fff3e0; color: #e65100;
+  }
+  .chain-item .badge.web {
+    background: #e3f2fd; color: #1565c0;
+  }
+  .chain-item button {
+    font-size: 12px; padding: 4px 8px; border: none;
+    border-radius: 6px; background: #e8e8ed; color: #1d1d1f;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .chain-item button.del {
+    background: #ffe5e5; color: #ff3b30;
+  }
+
+  .chain-actions {
+    display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+  }
+  .chain-actions button {
+    font-size: 13px; padding: 6px 12px; border: none;
+    border-radius: 6px; background: #e8e8ed; color: #1d1d1f;
+    font-weight: 600; cursor: pointer;
+  }
+  .chain-actions button.primary {
+    background: #0071e3; color: #fff;
+  }
+
+  .file-label {
+    display: inline-block; font-size: 13px; padding: 6px 12px;
+    border-radius: 6px; background: #0071e3; color: #fff;
+    font-weight: 600; cursor: pointer;
+  }
+  .file-label input[type="file"] { display: none; }
+
+  @font-face {
+    font-family: "LastResortWeb";
+    src: url("LastResort.ttf") format("truetype");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "WenJinP0Web";
+    src: url("WenJinMinchoP0-Regular.ttf") format("truetype");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "LXGWWenKaiMonoWeb";
+    src: url("LXGW%20WenKai%20Mono%20Medium.ttf") format("truetype");
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "JigmoLocal1";
+    src: local("Jigmo"), local("Jigmo-Regular"), local("Jigmo Regular"), local("Jigmo 1");
+  }
+  @font-face {
+    font-family: "JigmoLocal2";
+    src: local("Jigmo2"), local("Jigmo2-Regular"), local("Jigmo2 Regular"), local("Jigmo 2");
+  }
+  @font-face {
+    font-family: "JigmoLocal3";
+    src: local("Jigmo3"), local("Jigmo3-Regular"), local("Jigmo3 Regular"), local("Jigmo 3");
+  }
+  @font-face {
+    font-family: "TangutYinchuanLocal";
+    src:
+      local("Tangut Yinchuan"), local("Tangut Yinchuan-Regular"), local("Tangut Yinchuan Regular"),
+      local("西夏银川"), local("西夏银川 Regular");
+  }
+</style>
+</head>
+<body>
+
+<h1>Unicode 快闪 · 防崩溃</h1>
+<div class="subtitle">限制单帧渲染量 + 频繁让出主线程，避免跑到一半自动重启。</div>
+
+<div class="panel">
+  <div class="panel-title">快闪</div>
+  <div class="canvas-wrap">
+    <canvas id="flashCanvas"></canvas>
+    <div class="flash-info" id="flashInfo">U+020000</div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <div class="controls">
+    <button id="btnStart">开始</button>
+    <button id="btnPause" class="secondary">暂停</button>
+    <button id="btnReset" class="secondary">重置</button>
+
+    <label>
+      起始
+      <input type="text" id="startInput" value="0" size="8">
+    </label>
+    <label>
+      结束
+      <input type="text" id="endInput" value="10FFFF" size="8">
+    </label>
+    <label>
+      毫秒
+      <input type="number" id="msInput" value="30" min="1" max="5000">
+    </label>
+    <label>
+      每段
+      <input type="number" id="chunkInput" value="512" min="128" max="4096">
+    </label>
+  </div>
+
+  <div class="hint">
+    起始/结束支持十六进制（不带 0x）。毫秒越小越快。每段：每跑这么多码位就主动让出主线程一次。
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">回退链（最多 256 个）</div>
+  <div class="chain-list" id="chainList"></div>
+
+  <div class="chain-actions">
+    <label class="file-label">
+      + 从文件添加字体
+      <input type="file" id="fileInput" accept=".ttf,.otf,.ttc,.woff,.woff2" multiple>
+    </label>
+    <button id="btnAddManual">+ 手动添加别名</button>
+    <button id="btnPresetWeb">Web 预设</button>
+    <button id="btnPresetFull">全预设</button>
+    <button class="danger" id="btnClear">清空</button>
+  </div>
+  <div class="hint" id="chainCount">当前 0 / 256</div>
+</div>
+
+<script>
+  const canvas = document.getElementById("flashCanvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const flashInfo = document.getElementById("flashInfo");
+  const progressBar = document.getElementById("progressBar");
+
+  const btnStart = document.getElementById("btnStart");
+  const btnPause = document.getElementById("btnPause");
+  const btnReset = document.getElementById("btnReset");
+
+  const startInput = document.getElementById("startInput");
+  const endInput = document.getElementById("endInput");
+  const msInput = document.getElementById("msInput");
+  const chunkInput = document.getElementById("chunkInput");
+
+  const chainList = document.getElementById("chainList");
+  const chainCount = document.getElementById("chainCount");
+  const fileInput = document.getElementById("fileInput");
+  const btnAddManual = document.getElementById("btnAddManual");
+  const btnPresetWeb = document.getElementById("btnPresetWeb");
+  const btnPresetFull = document.getElementById("btnPresetFull");
+  const btnClear = document.getElementById("btnClear");
+
+  const MAX_FONTS = 256;
+  const CSS_W = 400;
+  const CSS_H = 200;
+
+  // 关键限制：每帧最多渲染 8 个
+  const MAX_RENDER_PER_FRAME = 8;
+
+  function setupCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(CSS_W * dpr);
+    canvas.height = Math.round(CSS_H * dpr);
+    canvas.style.width = CSS_W + "px";
+    canvas.style.height = CSS_H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawChar(current);
+  }
+  window.addEventListener("resize", setupCanvas);
+  window.addEventListener("orientationchange", setupCanvas);
+
+  let chain = [
+    { name: "JigmoLocal1", type: "local" },
+    { name: "JigmoLocal2", type: "local" },
+    { name: "JigmoLocal3", type: "local" },
+    { name: "TangutYinchuanLocal", type: "local" },
+    { name: "WenJinP0Web", type: "web" },
+    { name: "LXGWWenKaiMonoWeb", type: "web" },
+    { name: "LastResortWeb", type: "web" }
+  ];
+
+  let current = 0;
+  let startCP = 0;
+  let endCP = 0x10FFFF;
+  let msPerChar = 30;
+  let chunkSize = 512;
+  let rafId = null;
+  let running = false;
+  let lastTime = 0;
+  let acc = 0;
+
+  let fontFamilyStr = "sans-serif";
+  let fontSize = Math.floor(CSS_H * 0.7);
+
+  function renderChain() {
+    chainList.innerHTML = "";
+    chain.forEach((item, i) => {
+      const row = document.createElement("div");
+      row.className = "chain-item";
+
+      const idx = document.createElement("span");
+      idx.className = "index";
+      idx.textContent = (i + 1) + ".";
+
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = item.name;
+      name.title = item.name;
+
+      const badge = document.createElement("span");
+      badge.className = "badge" + (item.type === "file" ? " file" : item.type === "web" ? " web" : "");
+      badge.textContent =
+        item.type === "file" ? "文件" :
+        item.type === "web" ? "网络" : "本地";
+
+      const btnUp = document.createElement("button");
+      btnUp.textContent = "↑";
+      btnUp.addEventListener("click", () => {
+        if (i === 0) return;
+        [chain[i - 1], chain[i]] = [chain[i], chain[i - 1]];
+        renderChain(); applyChain();
+      });
+
+      const btnDown = document.createElement("button");
+      btnDown.textContent = "↓";
+      btnDown.addEventListener("click", () => {
+        if (i === chain.length - 1) return;
+        [chain[i + 1], chain[i]] = [chain[i], chain[i + 1]];
+        renderChain(); applyChain();
+      });
+
+      const btnDel = document.createElement("button");
+      btnDel.className = "del";
+      btnDel.textContent = "✕";
+      btnDel.addEventListener("click", () => {
+        chain.splice(i, 1);
+        renderChain(); applyChain();
+      });
+
+      row.appendChild(idx);
+      row.appendChild(name);
+      row.appendChild(badge);
+      row.appendChild(btnUp);
+      row.appendChild(btnDown);
+      row.appendChild(btnDel);
+      chainList.appendChild(row);
+    });
+
+    chainCount.textContent = "当前 " + chain.length + " / " + MAX_FONTS;
+  }
+
+  function applyChain() {
+    const list = chain.map(item => item.name).filter(n => n && n.trim() !== "");
+    fontFamilyStr = list.length
+      ? list.map(n => `"${n}"`).join(", ") + ", sans-serif"
+      : "sans-serif";
+    drawChar(current);
+  }
+
+  let fileCounter = 0;
+  fileInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    for (const file of files) {
+      if (chain.length >= MAX_FONTS) {
+        alert("最多只能有 " + MAX_FONTS + " 个字体");
+        break;
+      }
+      try {
+        const buffer = await file.arrayBuffer();
+        const familyName = "FileFont" + (++fileCounter) + "_" + file.name.replace(/\.[^.]+$/, "");
+        const fontFace = new FontFace(familyName, buffer);
+        await fontFace.load();
+        document.fonts.add(fontFace);
+        chain.push({ name: familyName, type: "file" });
+      } catch (err) {
+        console.error("加载字体失败:", file.name, err);
+        alert("加载字体失败：" + file.name + "\n" + err.message);
+      }
+    }
+
+    renderChain();
+    applyChain();
+    fileInput.value = "";
+  });
+
+  btnAddManual.addEventListener("click", () => {
+    if (chain.length >= MAX_FONTS) {
+      alert("最多只能有 " + MAX_FONTS + " 个字体");
+      return;
+    }
+    const name = prompt("输入字体名（CSS font-family 里的名字）：");
+    if (!name || !name.trim()) return;
+    chain.push({ name: name.trim(), type: "local" });
+    renderChain();
+    applyChain();
+  });
+
+  btnPresetWeb.addEventListener("click", () => {
+    chain = [
+      { name: "WenJinP0Web", type: "web" },
+      { name: "LXGWWenKaiMonoWeb", type: "web" },
+      { name: "LastResortWeb", type: "web" }
+    ];
+    renderChain(); applyChain();
+  });
+
+  btnPresetFull.addEventListener("click", () => {
+    chain = [
+      { name: "JigmoLocal1", type: "local" },
+      { name: "JigmoLocal2", type: "local" },
+      { name: "JigmoLocal3", type: "local" },
+      { name: "TangutYinchuanLocal", type: "local" },
+      { name: "WenJinP0Web", type: "web" },
+      { name: "LXGWWenKaiMonoWeb", type: "web" },
+      { name: "LastResortWeb", type: "web" }
+    ];
+    renderChain(); applyChain();
+  });
+
+  btnClear.addEventListener("click", () => {
+    chain = [];
+    renderChain(); applyChain();
+  });
+
+  function parseHex(str) {
+    const cleaned = str.trim().replace(/^0x/i, "");
+    const n = parseInt(cleaned, 16);
+    if (isNaN(n)) return null;
+    return n;
+  }
+  function isValidCP(cp) {
+    if (cp < 0 || cp > 0x10FFFF) return false;
+    if (cp >= 0xD800 && cp <= 0xDFFF) return false;
+    return true;
+  }
+  function formatCP(cp) {
+    return "U+" + cp.toString(16).toUpperCase().padStart(6, "0");
+  }
+
+  function drawChar(cp) {
+    const w = CSS_W, h = CSS_H;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#fafafa";
+    ctx.fillRect(0, 0, w, h);
+
+    if (!isValidCP(cp)) {
+      flashInfo.textContent = formatCP(cp) + " （跳过）";
+      return;
+    }
+    const ch = String.fromCodePoint(cp);
+    ctx.font = `${fontSize}px ${fontFamilyStr}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#1d1d1f";
+    ctx.fillText(ch, w / 2, h / 2);
+    flashInfo.textContent = formatCP(cp);
+  }
+
+  function updateProgress() {
+    const total = endCP - startCP + 1;
+    const done = current - startCP;
+    const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+    progressBar.style.width = pct + "%";
+  }
+
+  function loop(now) {
+    if (!running) return;
+
+    if (!lastTime) lastTime = now;
+    const delta = now - lastTime;
+    lastTime = now;
+    acc += delta;
+
+    let rendered = 0;
+
+    while (acc >= msPerChar && rendered < MAX_RENDER_PER_FRAME) {
+      acc -= msPerChar;
+
+      if (current > endCP) {
+        stop();
+        flashInfo.textContent = formatCP(endCP) + " 完成";
+        progressBar.style.width = "100%";
+        return;
+      }
+
+      drawChar(current);
+      current++;
+      rendered++;
+
+      if ((current - startCP) % chunkSize === 0) {
+        updateProgress();
+        rafId = requestAnimationFrame(() => {
+          setTimeout(() => {
+            rafId = requestAnimationFrame(loop);
+          }, 0);
+        });
+        return;
+      }
+    }
+
+    updateProgress();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function start() {
+    if (running) return;
+
+    const s = parseHex(startInput.value);
+    const e = parseHex(endInput.value);
+    const ms = parseInt(msInput.value, 10);
+    const cs = parseInt(chunkInput.value, 10);
+
+    if (s === null || e === null || isNaN(ms) || ms < 1) {
+      alert("请输入有效的起始、结束码位和毫秒值");
+      return;
+    }
+    if (isNaN(cs) || cs < 128) {
+      alert("每段至少要 128");
+      return;
+    }
+    if (s > e) {
+      alert("起始码位不能大于结束码位");
+      return;
+    }
+
+    startCP = s;
+    endCP = e;
+    msPerChar = ms;
+    chunkSize = Math.min(cs, 4096);
+
+    if (current < startCP || current > endCP) current = startCP;
+
+    running = true;
+    btnStart.textContent = "运行中";
+    btnStart.disabled = true;
+
+    lastTime = 0;
+    acc = 0;
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function pause() {
+    if (!running) return;
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    btnStart.textContent = "继续";
+    btnStart.disabled = false;
+  }
+
+  function stop() {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    btnStart.textContent = "开始";
+    btnStart.disabled = false;
+  }
+
+  function reset() {
+    stop();
+    const s = parseHex(startInput.value);
+    current = (s !== null && s >= 0) ? s : 0;
+    progressBar.style.width = "0%";
+    drawChar(current);
+  }
+
+  btnStart.addEventListener("click", () => {
+    if (running) pause();
+    else start();
+  });
+  btnPause.addEventListener("click", pause);
+  btnReset.addEventListener("click", reset);
+
+  renderChain();
+  applyChain();
+  setupCanvas();
+  reset();
+</script>
+
+</body>
+</html>
