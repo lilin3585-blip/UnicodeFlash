@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>π 语音 · 倍率递增</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, 'Segoe UI', sans-serif; }
+        body {
+            min-height: 100vh; margin: 0;
+            display: flex; justify-content: center; align-items: center;
+            background: linear-gradient(145deg, #0b0f1c, #1a1f2f);
+            color: #eef5ff;
+        }
+        .card {
+            background: rgba(18, 25, 40, 0.9);
+            border-radius: 2.5rem; padding: 2rem;
+            width: 660px; max-width: 94vw;
+            box-shadow: 0 25px 40px -10px #000, 0 0 0 2px #3b82f640;
+            border: 1px solid #3b82f660;
+            text-align: center;
+        }
+        h1 { font-weight: 300; letter-spacing: 3px; color: #aaccff; margin: 0 0 1.2rem; font-size: 1.5rem; }
+        h1 span { font-weight: 700; color: #fff; text-shadow: 0 0 20px #60a5fa; }
+
+        /* 圆周率显示 */
+        .digits-box {
+            background: #0a0e17; border-radius: 2rem;
+            padding: 1.2rem; margin: 1rem 0;
+            border: 1px solid #2d3a5e;
+            box-shadow: inset 0 0 25px #000;
+            min-height: 120px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .digits {
+            font-family: 'Courier New', monospace;
+            font-size: 2.2rem; font-weight: 700;
+            letter-spacing: 5px; color: #b7e0ff;
+            text-shadow: 0 0 12px #3b82f6;
+            word-break: break-all; line-height: 1.4;
+        }
+        .digits .hl {
+            color: #fff; background: #2563eb80;
+            border-radius: 8px; padding: 0 5px;
+            text-shadow: 0 0 20px #93c5fd;
+        }
+
+        /* 速度显示 */
+        .speed-row {
+            display: flex; align-items: center; justify-content: center;
+            gap: 14px; margin: 1rem 0;
+            background: #1e2a3a; padding: 0.7rem 1.5rem;
+            border-radius: 50px; border: 1px solid #3b82f6;
+        }
+        .led {
+            display: inline-block; width: 10px; height: 10px;
+            border-radius: 50%; background: #1e293b;
+        }
+        .led.on { background: #22c55e; box-shadow: 0 0 12px #22c55e; }
+        .speed-label { color: #90b4e0; font-size: 1rem; }
+        .speed-num {
+            font-size: 1.8rem; font-weight: 800;
+            color: #fff; background: #2563eb;
+            padding: 0.1rem 1rem; border-radius: 40px;
+            min-width: 3.5rem; box-shadow: 0 0 15px #3b82f6;
+        }
+        .speed-desc { font-size: 0.85rem; color: #7a9cc6; }
+
+        /* 进度 */
+        .progress {
+            display: flex; justify-content: center; gap: 2rem;
+            font-size: 0.95rem; color: #8ba3c7;
+            margin: 0.6rem 0;
+        }
+        .progress b { color: #facc15; font-weight: 700; }
+
+        /* 按钮 */
+        .buttons { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-top: 1.2rem; }
+        button {
+            background: #1e293b; border: 1px solid #4b5e7a;
+            font-size: 1.1rem; padding: 0.9rem 1.8rem;
+            border-radius: 3rem; color: #e2e8f0; cursor: pointer;
+            box-shadow: 0 6px 0 #0f172a; transition: all 0.1s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        button:active { transform: translateY(4px); box-shadow: 0 2px 0 #0f172a; }
+        button:disabled { opacity: 0.4; transform: translateY(2px); box-shadow: 0 4px 0 #0f172a; pointer-events: none; }
+        #startBtn { background: #2563eb; border-color: #60a5fa; box-shadow: 0 6px 0 #1e3a8a; }
+        #startBtn:active { box-shadow: 0 2px 0 #1e3a8a; }
+        #stopBtn { background: #2d1f1f; border-color: #a55555; box-shadow: 0 6px 0 #1f1212; }
+
+        .hint { margin-top: 1.2rem; font-size: 0.85rem; color: #7a9cc6; border-top: 1px dashed #2a3a55; padding-top: 1rem; }
+        .hint b { color: #facc15; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1><span>π</span> 语音 · 倍率依次递增</h1>
+
+    <!-- 圆周率数字 -->
+    <div class="digits-box">
+        <div class="digits" id="digits">3.</div>
+    </div>
+
+    <!-- 速度显示 -->
+    <div class="speed-row">
+        <span class="led" id="led"></span>
+        <span class="speed-label">当前倍率</span>
+        <span class="speed-num" id="speedNum">1x</span>
+        <span class="speed-desc" id="speedDesc">下一位 → 2x</span>
+    </div>
+
+    <!-- 进度 -->
+    <div class="progress">
+        <span>已读位数：<b id="countEl">0</b></span>
+        <span>当前数字：<b id="curDigit">3</b></span>
+    </div>
+
+    <!-- 控制 -->
+    <div class="buttons">
+        <button id="startBtn">▶ 开启语音</button>
+        <button id="stopBtn" disabled>⏹ 停止</button>
+        <button id="resetBtn">↺ 重置</button>
+    </div>
+
+    <div class="hint">
+        <b>规则：</b>读一位数字 → 倍率 +1（1x → 2x → 3x → 4x → 5x…）
+    </div>
+</div>
+
+<script>
+(function() {
+    // ========== 圆周率数字 ==========
+    const PI = "3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679";
+
+    // ========== 配置 ==========
+    const BASE_DELAY = 1200;    // 1x 时，每位间隔 1200ms
+    const MIN_DELAY = 80;       // 最小间隔，避免快到听不清
+    const MAX_SPEED = 60;       // 最大倍率上限（60x 已经很快了）
+
+    // ========== DOM ==========
+    const digitsEl = document.getElementById('digits');
+    const speedNumEl = document.getElementById('speedNum');
+    const speedDescEl = document.getElementById('speedDesc');
+    const ledEl = document.getElementById('led');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const countEl = document.getElementById('countEl');
+    const curDigitEl = document.getElementById('curDigit');
+
+    // ========== 状态 ==========
+    let index = 0;              // 下一个要读的字符索引
+    let speed = 1;              // 当前倍率：1, 2, 3, 4, 5...
+    let running = false;
+    let timer = null;
+    let currentUtterance = null;
+
+    // ========== 工具函数 ==========
+    function updateDisplay() {
+        if (index === 0) {
+            digitsEl.innerHTML = '3.';
+            curDigitEl.textContent = '3';
+            return;
+        }
+        let readStr = PI.slice(0, index);
+        if (readStr.length > 36) {
+            readStr = '…' + readStr.slice(-34);
+        }
+        const last = readStr.slice(-1);
+        const before = readStr.slice(0, -1);
+        digitsEl.innerHTML = before + `<span class="hl">${last}</span>`;
+        curDigitEl.textContent = last;
+    }
+
+    function updateSpeedUI() {
+        speedNumEl.textContent = speed + 'x';
+        let nextSpeed = Math.min(speed + 1, MAX_SPEED);  // 每次 +1
+        speedDescEl.textContent = `下一位 → ${nextSpeed}x`;
+        countEl.textContent = index;
+    }
+
+    function setLed(on) {
+        ledEl.classList.toggle('on', on);
+    }
+
+    function stopTimer() {
+        if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    function cancelSpeech() {
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        if (currentUtterance) {
+            currentUtterance.onend = null;
+            currentUtterance.onerror = null;
+            currentUtterance = null;
+        }
+    }
+
+    function stopAll() {
+        running = false;
+        stopTimer();
+        cancelSpeech();
+        setLed(false);
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    }
+
+    function resetAll() {
+        stopAll();
+        index = 0;
+        speed = 1;
+        updateDisplay();
+        updateSpeedUI();
+    }
+
+    // ========== 语音朗读单个字符 ==========
+    function speakChar(ch) {
+        return new Promise((resolve) => {
+            if (!window.speechSynthesis) {
+                setTimeout(resolve, 150);
+                return;
+            }
+
+            const map = {
+                '.': '点', '0': '零', '1': '一', '2': '二', '3': '三',
+                '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九'
+            };
+            const text = map[ch] || ch;
+
+            const utt = new SpeechSynthesisUtterance(text);
+            currentUtterance = utt;
+
+            // 语音语速：随倍率线性提升，有上限
+            let rate = 1.0 + (speed - 1) * 0.06;
+            rate = Math.min(rate, 3.0);
+            utt.rate = rate;
+            utt.pitch = 1.0;
+            utt.volume = 1.0;
+            utt.lang = 'zh-CN';
+
+            let done = false;
+            const finish = () => {
+                if (!done) { done = true; resolve(); }
+            };
+
+            const safety = setTimeout(() => {
+                if (!done) {
+                    console.warn('语音超时，继续');
+                    cancelSpeech();
+                    finish();
+                }
+            }, 2500);
+
+            utt.onend = () => { clearTimeout(safety); finish(); };
+            utt.onerror = (e) => { console.warn('语音错误', e); clearTimeout(safety); finish(); };
+
+            window.speechSynthesis.speak(utt);
+        });
+    }
+
+    // ========== 核心循环 ==========
+    async function step() {
+        if (!running) return;
+
+        if (index >= PI.length) {
+            stopAll();
+            return;
+        }
+
+        const ch = PI[index];
+
+        // 朗读当前字符
+        await speakChar(ch);
+
+        if (!running) return;
+
+        // 索引前进
+        index++;
+        updateDisplay();
+
+        if (index >= PI.length) {
+            stopAll();
+            return;
+        }
+
+        // ===== 倍率 +1（不是翻倍！） =====
+        // 读完一位后，speed 增加 1：1→2→3→4→5...
+        speed = Math.min(speed + 1, MAX_SPEED);
+        updateSpeedUI();
+
+        // 计算下次延迟：基础延迟 / 倍率
+        let delay = BASE_DELAY / speed;
+        if (delay < MIN_DELAY) delay = MIN_DELAY;
+
+        stopTimer();
+        timer = setTimeout(() => {
+            if (running) step();
+        }, delay);
+    }
+
+    // ========== 启动 ==========
+    function start() {
+        if (running) return;
+
+        if (index >= PI.length) {
+            index = 0;
+            speed = 1;
+            updateDisplay();
+            updateSpeedUI();
+        }
+
+        stopTimer();
+        cancelSpeech();
+
+        running = true;
+        setLed(true);
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        setTimeout(() => {
+            if (running) step();
+        }, 20);
+    }
+
+    // ========== 事件 ==========
+    startBtn.addEventListener('click', start);
+    stopBtn.addEventListener('click', stopAll);
+    resetBtn.addEventListener('click', resetAll);
+
+    // 初始化
+    resetAll();
+
+    window.addEventListener('beforeunload', () => {
+        cancelSpeech();
+        stopTimer();
+    });
+})();
+</script>
+</body>
+</html>
