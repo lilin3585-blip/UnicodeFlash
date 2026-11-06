@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>终极完全体 - 三体联动字体流水线</title>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <style>
+        :root { --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #1f6feb; --success: #3fb950; --error: #ff7b72; --purple: #a371f7;}
+        html, body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; display: flex; flex-direction: column; }
+        
+        .top-bar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px; display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; z-index: 10; }
+        input[type="text"] { background: #000; color: #fff; border: 1px solid var(--border); padding: 8px; border-radius: 6px; outline: none; font-size: 15px; }
+        input[type="file"] { color: #fff; font-size: 13px; max-width: 120px; }
+        input[type="range"] { width: 100px; }
+        
+        button { background: var(--accent); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
+        button.green { background: var(--success); }
+        button.red { background: #da3633; }
+        button.purple { background: var(--purple); }
+
+        .speed-control { display: flex; align-items: center; gap: 5px; font-size: 13px; font-family: monospace; color: var(--success); }
+
+        .main-area { display: flex; flex: 1; overflow: hidden; }
+        
+        .char-list { width: 200px; overflow-y: auto; border-right: 1px solid var(--border); background: #090c10; display: flex; flex-wrap: wrap; align-content: flex-start; padding: 5px; gap: 5px; scroll-behavior: auto; }
+        .char-btn { width: 36px; height: 36px; background: #161b22; color: #fff; border: 1px solid var(--border); border-radius: 4px; font-size: 18px; display: flex; justify-content: center; align-items: center; padding: 0; pointer-events: none; font-family: 'ImportedFont', sans-serif; }
+        .char-btn.active { border-color: var(--accent); background: var(--accent); }
+        .char-btn.drawn { background: #2ea043; }
+
+        .canvas-area { flex: 1; display: flex; justify-content: center; align-items: center; padding: 15px; position: relative; gap: 20px; }
+        
+        /* 左边：极其安静的 Canvas 描红画板 */
+        .grid-canvas-container {
+            width: 45%; max-width: 450px; aspect-ratio: 1; position: relative;
+        }
+        .grid-canvas-container canvas { background: #000; border: 1px solid var(--border); border-radius: 8px; width: 100%; height: 100%; }
+
+        /* 右边：你要求的西夏文狂暴快闪区域 */
+        .flash-container {
+            width: 45%; max-width: 450px; aspect-ratio: 1; background: #000; border: 1px solid var(--border); border-radius: 8px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            overflow: hidden; box-shadow: inset 0 0 50px rgba(0,0,0,1);
+        }
+        #flashChar {
+            font-size: 30vmin; line-height: 1; color: #ffffff;
+            font-family: 'ImportedFont', 'Apple SC', sans-serif; /* 同样同步字体 */
+            transform: translateZ(0); /* 硬件加速防抖 */
+        }
+        #flashCode {
+            font-size: 5vmin; font-family: ui-monospace, monospace; color: #ff0000; font-weight: bold; margin-top: 20px; letter-spacing: 2px;
+        }
+
+        .info { position: absolute; top: 5px; right: 15px; font-family: monospace; font-size: 14px; color: var(--success); }
+        .status { position: absolute; bottom: 5px; left: 15px; font-family: monospace; font-size: 14px; color: var(--purple); }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <input type="file" id="ttfInput" accept=".ttf,.otf">
+        <input type="text" id="fontNameInput" placeholder="导出名" value="DenMoSong_Pro">
+        
+        <div class="speed-control">
+            <span>速度:</span>
+            <!-- 默认暴力 120字/秒 -->
+            <input type="range" id="speedSlider" min="1" max="120" value="120">
+            <span id="speedText">120字/秒</span>
+        </div>
+
+        <button class="purple" onclick="startEngine(0x4E00)">🔥 三体极速启动</button>
+        <button class="red" onclick="stopEngine()">⏹ 停止</button>
+        <button class="green" onclick="exportFont()">导出 TTF</button>
+    </div>
+
+    <div class="main-area">
+        <div class="char-list" id="charList"></div>
+        
+        <div class="canvas-area">
+            <div class="info" id="infoText">当前码点: 未加载</div>
+            <div class="status" id="statusText">状态: 请先导入 TTF</div>
+            
+            <!-- 左边看轮廓 -->
+            <div class="grid-canvas-container">
+                <canvas id="drawArea" width="1000" height="1000"></canvas>
+            </div>
+
+            <!-- 右边看快闪 -->
+            <div class="flash-container">
+                <div id="flashChar">A</div>
+                <div id="flashCode">U+0041</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawArea');
+        const ctx = canvas.getContext('2d');
+        const charList = document.getElementById('charList');
+        const infoText = document.getElementById('infoText');
+        const statusText = document.getElementById('statusText');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedText = document.getElementById('speedText');
+        
+        // 快闪区域的 DOM
+        const flashChar = document.getElementById('flashChar');
+        const flashCode = document.getElementById('flashCode');
+        
+        let systemFont = null;
+        let fontPaths = {}; 
+        let activeBtn = null; 
+
+        let isRunning = false;
+        let rafId = null;
+        let pipelineIndex = 0;
+        let lastTime = performance.now();
+        let accumulator = 0;
+        let SPEED = 120; 
+        const END_CP = 0x9FFF; 
+
+        speedSlider.addEventListener('input', (e) => {
+            SPEED = parseInt(e.target.value);
+            speedText.innerText = `${SPEED}字/秒`;
+        });
+
+        function initList() {
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i <= 0xFFFF; i++) {
+                if (i >= 0xD800 && i <= 0xDFFF) continue;
+                const btn = document.createElement('button');
+                btn.className = 'char-btn';
+                btn.id = `char-${i}`;
+                btn.innerText = (i < 0x20 || (i >= 0x7F && i <= 0x9F)) ? '·' : String.fromCharCode(i);
+                fragment.appendChild(btn);
+            }
+            charList.appendChild(fragment);
+        }
+
+        document.getElementById('ttfInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            statusText.innerText = "状态: 正在解析并注入 TTF...";
+            
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                const buffer = evt.target.result;
+                try {
+                    systemFont = opentype.parse(buffer);
+                } catch (err) { return; }
+
+                try {
+                    const blob = new Blob([buffer], { type: 'font/ttf' });
+                    const fontFace = new FontFace('ImportedFont', `url(${URL.createObjectURL(blob)})`);
+                    await fontFace.load();
+                    document.fonts.add(fontFace);
+                    statusText.innerText = `✅ 双屏三体同步成功！`;
+                } catch (err) {}
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function drawBaseGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#30363d'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(500, 0); ctx.lineTo(500, 1000);
+            ctx.moveTo(0, 500); ctx.lineTo(1000, 500);
+            ctx.moveTo(0, 800); ctx.lineTo(1000, 800); ctx.stroke();
+        }
+
+        function startEngine(startCP) {
+            if (!systemFont) return alert("请先导入 TTF！");
+            if (isRunning) return;
+            
+            isRunning = true;
+            pipelineIndex = startCP;
+            lastTime = performance.now();
+            accumulator = 0;
+            statusText.innerText = `状态: 🚀 120Hz 全火力覆盖启动！`;
+
+            function loop(now) {
+                if (!isRunning) return;
+
+                let deltaTime = now - lastTime;
+                lastTime = now;
+                
+                // 累加器核心
+                accumulator += deltaTime * (SPEED / 1000);
+                
+                let lastProcessedChar = null;
+                let lastPathStr = null;
+                let lastCharStr = '';
+
+                while (accumulator >= 1) {
+                    if (pipelineIndex >= 0xD800 && pipelineIndex <= 0xDFFF) pipelineIndex = 0xE000;
+                    if (pipelineIndex < 0x20 || (pipelineIndex >= 0x7F && pipelineIndex <= 0x9F)) pipelineIndex++;
+                    
+                    if (pipelineIndex > END_CP) {
+                        stopEngine();
+                        return;
+                    }
+
+                    const charStr = String.fromCharCode(pipelineIndex);
+                    const pathStr = extractGlyph(pipelineIndex);
+                    
+                    if (pathStr) {
+                        fontPaths[pipelineIndex] = pathStr;
+                        lastProcessedChar = pipelineIndex;
+                        lastPathStr = pathStr;
+                        lastCharStr = charStr;
+                    }
+
+                    pipelineIndex++;
+                    accumulator -= 1;
+                }
+
+                // 如果这一帧有计算出新字，立马双屏同步！
+                if (lastProcessedChar !== null) {
+                    
+                    // 1. 更新左边：极其沉稳的 Canvas 描边
+                    drawBaseGrid();
+                    const path = new Path2D(lastPathStr);
+                    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    ctx.stroke(path);
+
+                    // 2. 更新右边：极其狂暴的 DOM 快闪
+                    flashChar.textContent = lastCharStr;
+                    flashCode.textContent = 'U+' + lastProcessedChar.toString(16).toUpperCase();
+
+                    infoText.innerText = `当前码点: U+${lastProcessedChar.toString(16).toUpperCase()}`;
+                    
+                    // 3. 更新极左侧：降频滚动的 6 万按钮
+                    if (lastProcessedChar % 10 === 0 || pipelineIndex % 10 === 0) {
+                        if (activeBtn) {
+                            activeBtn.classList.remove('active');
+                            activeBtn.classList.add('drawn');
+                        }
+                        const currentBtn = document.getElementById(`char-${lastProcessedChar}`);
+                        if (currentBtn) {
+                            currentBtn.classList.add('active');
+                            activeBtn = currentBtn;
+                            charList.scrollTop = currentBtn.offsetTop - (charList.clientHeight / 2);
+                        }
+                    }
+                }
+
+                rafId = requestAnimationFrame(loop);
+            }
+            rafId = requestAnimationFrame(loop);
+        }
+
+        function stopEngine() {
+            isRunning = false;
+            if (rafId) cancelAnimationFrame(rafId);
+            statusText.innerText = "状态: 待机 (已停止)";
+            if (activeBtn) activeBtn.classList.remove('active');
+        }
+
+        // 提取字形核心（绝对缩放居中）
+        function extractGlyph(cp) {
+            const charStr = String.fromCharCode(cp);
+            try {
+                const glyph = systemFont.charToGlyph(charStr);
+                if (glyph && glyph.path && glyph.path.commands.length > 0) {
+                    const pathObj = glyph.path;
+                    const box = pathObj.getBoundingBox();
+                    const boxW = box.x2 - box.x1;
+                    const boxH = box.y2 - box.y1;
+
+                    let scale = 1;
+                    if (boxW > 0 && boxH > 0) scale = Math.min(800 / boxW, 800 / boxH); 
+
+                    const offsetX = 500 - (boxW * scale) / 2 - (box.x1 * scale);
+                    const offsetY = 800 - (boxH * scale) - (box.y1 * scale);
+
+                    let pathStr = "";
+                    for (const cmd of pathObj.commands) {
+                        const px = (cmd.x !== undefined) ? (cmd.x * scale + offsetX) : 0;
+                        const py = (cmd.y !== undefined) ? (800 - (cmd.y * scale + offsetY)) : 0;
+                        const px1 = (cmd.x1 !== undefined) ? (cmd.x1 * scale + offsetX) : 0;
+                        const py1 = (cmd.y1 !== undefined) ? (800 - (cmd.y1 * scale + offsetY)) : 0;
+                        const px2 = (cmd.x2 !== undefined) ? (cmd.x2 * scale + offsetX) : 0;
+                        const py2 = (cmd.y2 !== undefined) ? (800 - (cmd.y2 * scale + offsetY)) : 0;
+
+                        if (cmd.type === 'M') { pathStr += `M ${px} ${py} `; }
+                        else if (cmd.type === 'L') { pathStr += `L ${px} ${py} `; }
+                        else if (cmd.type === 'C') { pathStr += `C ${px1} ${py1}, ${px2} ${py2}, ${px} ${py} `; }
+                        else if (cmd.type === 'Q') { pathStr += `Q ${px1} ${py1}, ${px} ${py} `; }
+                        else if (cmd.type === 'Z') { pathStr += `Z `; }
+                    }
+                    return pathStr;
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        function exportFont() {
+            let customName = document.getElementById('fontNameInput').value.trim() || 'DenMoSong_Pro';
+            const glyphs = [];
+            const tofuPath = new opentype.Path();
+            tofuPath.moveTo(100, 0); tofuPath.lineTo(900, 0); tofuPath.lineTo(900, 800); tofuPath.lineTo(100, 800); tofuPath.lineTo(100, 0);
+            tofuPath.moveTo(100, 0); tofuPath.lineTo(900, 800); tofuPath.moveTo(900, 0); tofuPath.lineTo(100, 800);
+
+            for (let i = 0; i <= 0xFFFF; i++) {
+                if (i >= 0xD800 && i <= 0xDFFF) continue; 
+                let path = new opentype.Path();
+                if (fontPaths[i]) {
+                    try {
+                        const g = systemFont.charToGlyph(String.fromCharCode(i));
+                        if(g) path = g.path;
+                    } catch(e) {}
+                } else {
+                    if (i >= 0x20 && !(i >= 0x7F && i <= 0x9F)) path = tofuPath;
+                }
+                glyphs.push(new opentype.Glyph({
+                    name: 'uni' + i.toString(16).toUpperCase().padStart(4, '0'),
+                    unicode: i, advanceWidth: 1000, path: path
+                }));
+            }
+
+            const font = new opentype.Font({
+                familyName: customName, styleName: 'Regular', unitsPerEm: 1000, ascender: 800, descender: -200, glyphs: glyphs
+            });
+
+            const buffer = font.toArrayBuffer();
+            const blob = new Blob([buffer], { type: 'font/ttf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${customName}.ttf`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            alert(`✅ 成功！已导出 [${customName}].ttf`);
+        }
+
+        initList();
+        drawBaseGrid();
+    </script>
+</body>
+</html>
