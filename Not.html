@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极其终极：手绘导出修复版</title>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <style>
+        :root { --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #1f6feb; --success: #3fb950; --error: #ff7b72; --purple: #a371f7; --gold: #d29922;}
+        html, body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; display: flex; flex-direction: column; }
+        
+        .top-bar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px; display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; z-index: 10; }
+        input[type="text"] { background: #000; color: #fff; border: 1px solid var(--border); padding: 8px; border-radius: 6px; outline: none; font-size: 15px; }
+        input[type="file"] { color: #fff; font-size: 13px; max-width: 120px; }
+        input[type="range"] { width: 100px; }
+        
+        button, select { background: var(--accent); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; outline: none; transition: 0.2s;}
+        button.active-tool { background: #ff7b72; color: #fff; box-shadow: 0 0 10px #ff7b72; }
+        select { background: #000; border: 1px solid var(--border); padding: 8px; }
+
+        /* ★ 极其核心的蓝色文字下载按钮 */
+        .download-link {
+            color: #58a6ff; font-size: 15px; font-weight: bold; cursor: pointer;
+            text-decoration: underline; margin-left: 15px; user-select: none;
+            transition: color 0.2s;
+        }
+        .download-link:hover { color: #79c0ff; text-shadow: 0 0 8px rgba(88, 166, 255, 0.5); }
+
+        .speed-control { display: flex; align-items: center; gap: 5px; font-size: 13px; font-family: monospace; color: var(--success); }
+
+        .main-area { display: flex; flex: 1; overflow: hidden; }
+        
+        .char-list { width: 220px; overflow-y: auto; border-right: 1px solid var(--border); background: #090c10; display: flex; flex-wrap: wrap; align-content: flex-start; padding: 5px; gap: 5px; scroll-behavior: auto; }
+        .char-btn { 
+            width: 36px; height: 36px; background: #161b22; color: #fff; border: 1px solid var(--border); border-radius: 4px; font-size: 18px; 
+            display: flex; justify-content: center; align-items: center; padding: 0; cursor: pointer; font-family: 'ImportedFont', sans-serif; 
+        }
+        .char-btn.active { border-color: var(--accent); background: var(--accent); transform: scale(1.1); z-index: 2; }
+        .char-btn.drawn { background: #2ea043; border-color: #3fb950; }
+
+        .canvas-area { flex: 1; display: flex; justify-content: center; align-items: center; padding: 15px; position: relative; gap: 20px; flex-wrap: wrap;}
+        
+        .grid-canvas-container {
+            width: 45%; max-width: 450px; aspect-ratio: 1; position: relative; flex-shrink: 0;
+        }
+        .grid-canvas-container canvas { background: #000; border: 1px solid var(--border); border-radius: 8px; width: 100%; height: 100%; touch-action: none; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
+        .grid-canvas-container canvas.eraser-mode { cursor: cell; border-color: #ff7b72; }
+
+        .flash-container {
+            width: 45%; max-width: 450px; aspect-ratio: 1; background: #000; border: 1px solid var(--border); border-radius: 8px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            overflow: hidden; box-shadow: inset 0 0 50px rgba(0,0,0,1); flex-shrink: 0;
+        }
+        #flashChar { font-size: 30vmin; line-height: 1; color: #ffffff; font-family: 'ImportedFont', 'Apple SC', sans-serif; transform: translateZ(0); }
+        #flashCode { font-size: 5vmin; font-family: ui-monospace, monospace; color: #ff0000; font-weight: bold; margin-top: 20px; letter-spacing: 2px; }
+
+        .info { position: absolute; top: 5px; right: 15px; font-family: monospace; font-size: 14px; color: var(--success); }
+        .status { position: absolute; bottom: 5px; left: 15px; font-family: monospace; font-size: 14px; color: var(--purple); }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <input type="file" id="ttfInput" accept=".ttf,.otf,.woff,.woff2" multiple>
+        <input type="text" id="fontNameInput" placeholder="字体导出名" value="DenMo手写体">
+        
+        <select id="planeSelect">
+            <option value="bmp">第一平面: 基础区</option>
+            <option value="ext-a">扩展 A</option>
+            <option value="ext-b">第二平面: 扩展 B</option>
+        </select>
+
+        <button id="eraserBtn" onclick="toggleEraser()">🧽 橡皮擦</button>
+        <button class="red" onclick="clearCurrentChar()" style="background: #da3633;">💣 清空当前</button>
+
+        <div class="speed-control">
+            <span>速度:</span>
+            <input type="range" id="speedSlider" min="1" max="120" value="120">
+            <span id="speedText">120字/秒</span>
+        </div>
+
+        <button class="purple" onclick="startEngine()" style="background: #a371f7;">🔥 自动提取</button>
+        <button class="red" onclick="stopEngine()" style="background: #da3633;">⏹ 停止</button>
+        
+        <!-- ★ 极其符合你要求的蓝色文字下载链接 -->
+        <span class="download-link" onclick="exportFont()">导出 TTF</span>
+    </div>
+
+    <div class="main-area">
+        <div class="char-list" id="charList"></div>
+        
+        <div class="canvas-area">
+            <div class="info" id="infoText">当前码点: 未选中</div>
+            <div class="status" id="statusText">状态: 极其自由的手绘模式</div>
+            
+            <div class="grid-canvas-container">
+                <canvas id="drawArea" width="1000" height="1000"></canvas>
+            </div>
+
+            <div class="flash-container">
+                <div id="flashChar">A</div>
+                <div id="flashCode">U+0041</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawArea');
+        const ctx = canvas.getContext('2d');
+        const charList = document.getElementById('charList');
+        const infoText = document.getElementById('infoText');
+        const statusText = document.getElementById('statusText');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedText = document.getElementById('speedText');
+        const flashChar = document.getElementById('flashChar');
+        const flashCode = document.getElementById('flashCode');
+        const planeSelect = document.getElementById('planeSelect');
+        const eraserBtn = document.getElementById('eraserBtn');
+        
+        let fallbackChain = []; 
+        let fontPaths = {}; 
+        let handDrawnData = {}; 
+        
+        let activeBtn = null; 
+        let currentCP = 0x0041; 
+        let isDrawing = false;
+        let isErasing = false; 
+        let eraserPath = [];   
+        let currentPath = []; 
+        let isAutoRunning = false;
+
+        let rafId = null;
+        let lastTime = performance.now();
+        let accumulator = 0;
+        let SPEED = 120; 
+
+        let currentStartCP = 0x0000;
+        let currentEndCP = 0xFFFF;
+        let pipelineIndex = currentStartCP;
+
+        // ★ 极其关键的修复：控制字符不显示乱码，显示转义
+        function getFlashChar(cp) {
+            if (cp < 0x20 || (cp >= 0x7F && cp <= 0x9F)) return '·';
+            return String.fromCodePoint(cp);
+        }
+
+        speedSlider.addEventListener('input', (e) => {
+            SPEED = parseInt(e.target.value);
+            speedText.innerText = `${SPEED}字/秒`;
+        });
+
+        window.toggleEraser = function() {
+            isErasing = !isErasing;
+            if (isErasing) {
+                eraserBtn.classList.add('active-tool');
+                eraserBtn.innerText = "🧽 抹除中...";
+                canvas.classList.add('eraser-mode');
+                statusText.innerText = "状态: 极其危险的擦除模式！";
+            } else {
+                eraserBtn.classList.remove('active-tool');
+                eraserBtn.innerText = "🧽 橡皮擦";
+                canvas.classList.remove('eraser-mode');
+                statusText.innerText = "状态: 极其自由的手绘模式已恢复";
+            }
+        }
+
+        window.clearCurrentChar = function() {
+            if(!fontPaths[currentCP] && !handDrawnData[currentCP]) return;
+            delete fontPaths[currentCP];
+            delete handDrawnData[currentCP];
+            const btn = document.getElementById(`char-${currentCP}`);
+            if(btn) btn.classList.remove('drawn');
+            drawBaseGrid();
+        }
+
+        function rebuildList() {
+            charList.innerHTML = ''; 
+            const mode = planeSelect.value;
+            
+            if (mode === 'bmp') { currentStartCP = 0x0000; currentEndCP = 0xFFFF; }
+            else if (mode === 'ext-a') { currentStartCP = 0x3400; currentEndCP = 0x4DBF; }
+            else if (mode === 'ext-b') { currentStartCP = 0x20000; currentEndCP = 0x2A6DF; }
+
+            const fragment = document.createDocumentFragment();
+            for (let i = currentStartCP; i <= currentEndCP; i++) {
+                if (i >= 0xD800 && i <= 0xDFFF) continue; 
+                const btn = document.createElement('button');
+                btn.className = 'char-btn';
+                btn.id = `char-${i}`;
+                btn.onclick = () => { if (!isAutoRunning) selectChar(i); };
+                btn.innerText = (i < 0x20 || (i >= 0x7F && i <= 0x9F)) ? '·' : String.fromCodePoint(i);
+                if (handDrawnData[i] || fontPaths[i]) btn.classList.add('drawn');
+                fragment.appendChild(btn);
+            }
+            charList.appendChild(fragment);
+            selectChar(currentStartCP);
+        }
+
+        planeSelect.addEventListener('change', rebuildList);
+
+        function selectChar(cp) {
+            currentCP = cp;
+            const btn = document.getElementById(`char-${cp}`);
+            if (activeBtn) activeBtn.classList.remove('active');
+            if (btn) {
+                btn.classList.add('active');
+                activeBtn = btn;
+                charList.scrollTop = btn.offsetTop - (charList.clientHeight / 2);
+            }
+            infoText.innerText = `当前码点: U+${cp.toString(16).toUpperCase()}`;
+            flashChar.textContent = getFlashChar(cp);
+            flashCode.textContent = 'U+' + cp.toString(16).toUpperCase();
+            drawBaseGrid();
+        }
+
+        document.getElementById('ttfInput').addEventListener('change', async function(e) {
+            const files = e.target.files;
+            if (!files.length) return;
+            fallbackChain = [];
+            for (let f of files) {
+                const buffer = await new Promise((res) => {
+                    const r = new FileReader();
+                    r.onload = (evt) => res(evt.target.result);
+                    r.readAsArrayBuffer(f);
+                });
+                try { fallbackChain.push(opentype.parse(buffer)); } catch(err) {}
+            }
+            statusText.innerText = `✅ 字体已注入，极其完美！`;
+        });
+
+        function drawBaseGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#30363d'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(500, 0); ctx.lineTo(500, 1000);
+            ctx.moveTo(0, 500); ctx.lineTo(1000, 500);
+            ctx.moveTo(0, 800); ctx.lineTo(1000, 800); ctx.stroke();
+
+            if (fontPaths[currentCP]) {
+                const path = new Path2D(fontPaths[currentCP]);
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.stroke(path);
+            }
+
+            if (handDrawnData[currentCP]) {
+                ctx.strokeStyle = '#3fb950'; 
+                ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                handDrawnData[currentCP].forEach(stroke => {
+                    if(stroke.length < 2) return;
+                    ctx.beginPath();
+                    ctx.moveTo(stroke[0].x, stroke[0].y);
+                    for(let i=1; i<stroke.length; i++) {
+                        ctx.lineTo(stroke[i].x, stroke[i].y);
+                    }
+                    ctx.stroke();
+                });
+            }
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: (e.clientX - rect.left) * (canvas.width / rect.width), y: (e.clientY - rect.top) * (canvas.height / rect.height) };
+        }
+
+        function isPointNearSegment(px, py, x1, y1, x2, y2, threshold) {
+            const dx = x2 - x1; const dy = y2 - y1;
+            const lengthSq = dx*dx + dy*dy;
+            if (lengthSq === 0) return Math.hypot(px - x1, py - y1) <= threshold;
+            let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy)) <= threshold;
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (isAutoRunning) return; 
+            e.preventDefault(); 
+            const pos = getPos(e);
+            if (isErasing) {
+                isDrawing = true; eraserPath = [pos]; performEraser(eraserPath);
+            } else {
+                isDrawing = true; currentPath = [pos];
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDrawing) return;
+            e.preventDefault(); 
+            const pos = getPos(e); 
+            if (isErasing) {
+                const lastPos = eraserPath[eraserPath.length - 1];
+                eraserPath.push(pos); performEraser([lastPos, pos]);
+                ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(lastPos.x, lastPos.y); ctx.lineTo(pos.x, pos.y); ctx.stroke(); ctx.globalAlpha = 1.0;
+            } else {
+                currentPath.push(pos);
+                ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.beginPath(); const last = currentPath[currentPath.length - 2]; ctx.moveTo(last.x, last.y); ctx.lineTo(pos.x, pos.y); ctx.stroke();
+            }
+        });
+
+        canvas.addEventListener('pointerup', () => {
+            if (!isDrawing) return; isDrawing = false;
+            if (isErasing) { drawBaseGrid(); } 
+            else {
+                if (currentPath.length > 1) {
+                    if (!handDrawnData[currentCP]) handDrawnData[currentCP] = [];
+                    handDrawnData[currentCP].push(currentPath);
+                    const btn = document.getElementById(`char-${currentCP}`);
+                    if(btn) btn.classList.add('drawn');
+                }
+            }
+        });
+
+        function performEraser(eraserLine) {
+            let erasedAny = false; const threshold = 40;
+            if (handDrawnData[currentCP]) {
+                const strokes = handDrawnData[currentCP];
+                for (let i = strokes.length - 1; i >= 0; i--) {
+                    let strokeHit = false; const stroke = strokes[i];
+                    for (let j = 0; j < stroke.length; j++) {
+                        for (let k = 0; k < eraserLine.length; k++) {
+                            if (isPointNearSegment(stroke[j].x, stroke[j].y, eraserLine[k].x, eraserLine[k].y, eraserLine[Math.min(k+1, eraserLine.length-1)].x, eraserLine[Math.min(k+1, eraserLine.length-1)].y, threshold)) {
+                                strokeHit = true; break;
+                            }
+                        }
+                        if (strokeHit) break;
+                    }
+                    if (strokeHit) { strokes.splice(i, 1); erasedAny = true; }
+                }
+            }
+            if (erasedAny) drawBaseGrid();
+        }
+
+        function startEngine() {
+            if (fallbackChain.length === 0) return alert("极其需要先导入 TTF！");
+            if (isAutoRunning) return;
+            isAutoRunning = true; pipelineIndex = currentStartCP;
+            lastTime = performance.now(); accumulator = 0;
+            statusText.innerText = `状态: 🚀 极其狂暴的提取中！`;
+
+            function loop(now) {
+                if (!isAutoRunning) return;
+                let deltaTime = now - lastTime; lastTime = now;
+                accumulator += deltaTime * (SPEED / 1000);
+                let lastProcessedChar = null;
+                while (accumulator >= 1) {
+                    if (pipelineIndex >= 0xD800 && pipelineIndex <= 0xDFFF) pipelineIndex = 0xE000;
+                    if (pipelineIndex < 0x20 || (pipelineIndex >= 0x7F && pipelineIndex <= 0x9F)) pipelineIndex++;
+                    if (pipelineIndex > currentEndCP) { stopEngine(); return; }
+                    const pathStr = extractGlyph(pipelineIndex);
+                    if (pathStr) {
+                        if (!handDrawnData[pipelineIndex]) fontPaths[pipelineIndex] = pathStr;
+                        lastProcessedChar = pipelineIndex;
+                    }
+                    pipelineIndex++; accumulator -= 1;
+                }
+                if (lastProcessedChar !== null) {
+                    currentCP = lastProcessedChar; drawBaseGrid();
+                    infoText.innerText = `当前码点: U+${lastProcessedChar.toString(16).toUpperCase()}`;
+                    flashChar.textContent = getFlashChar(lastProcessedChar);
+                    flashCode.textContent = 'U+' + lastProcessedChar.toString(16).toUpperCase();
+                    if (lastProcessedChar % 10 === 0) {
+                        if (activeBtn) { activeBtn.classList.remove('active'); activeBtn.classList.add('drawn'); }
+                        const currentBtn = document.getElementById(`char-${lastProcessedChar}`);
+                        if (currentBtn) { currentBtn.classList.add('active'); activeBtn = currentBtn; charList.scrollTop = currentBtn.offsetTop - (charList.clientHeight / 2); }
+                    }
+                }
+                rafId = requestAnimationFrame(loop);
+            }
+            rafId = requestAnimationFrame(loop);
+        }
+
+        function stopEngine() {
+            isAutoRunning = false; if (rafId) cancelAnimationFrame(rafId);
+            statusText.innerText = "状态: 极其自由的手绘模式已恢复";
+        }
+
+        function extractGlyph(cp) {
+            const charStr = String.fromCodePoint(cp);
+            for (let i = 0; i < fallbackChain.length; i++) {
+                try {
+                    const glyph = fallbackChain[i].charToGlyph(charStr);
+                    if (glyph && glyph.path && glyph.path.commands.length > 0) {
+                        const pathObj = glyph.path;
+                        const box = pathObj.getBoundingBox();
+                        const boxW = box.x2 - box.x1; const boxH = box.y2 - box.y1;
+                        let scale = 1; if (boxW > 0 && boxH > 0) scale = Math.min(800 / boxW, 800 / boxH); 
+                        const offsetX = 500 - (boxW * scale) / 2 - (box.x1 * scale);
+                        const offsetY = 800 - (boxH * scale) - (box.y1 * scale);
+                        let pathStr = "";
+                        for (const cmd of pathObj.commands) {
+                            const px = (cmd.x !== undefined) ? (cmd.x * scale + offsetX) : 0;
+                            const py = (cmd.y !== undefined) ? (800 - (cmd.y * scale + offsetY)) : 0;
+                            const px1 = (cmd.x1 !== undefined) ? (cmd.x1 * scale + offsetX) : 0;
+                            const py1 = (cmd.y1 !== undefined) ? (800 - (cmd.y1 * scale + offsetY)) : 0;
+                            const px2 = (cmd.x2 !== undefined) ? (cmd.x2 * scale + offsetX) : 0;
+                            const py2 = (cmd.y2 !== undefined) ? (800 - (cmd.y2 * scale + offsetY)) : 0;
+                            if (cmd.type === 'M') { pathStr += `M ${px} ${py} `; }
+                            else if (cmd.type === 'L') { pathStr += `L ${px} ${py} `; }
+                            else if (cmd.type === 'C') { pathStr += `C ${px1} ${py1}, ${px2} ${py2}, ${px} ${py} `; }
+                            else if (cmd.type === 'Q') { pathStr += `Q ${px1} ${py1}, ${px} ${py} `; }
+                            else if (cmd.type === 'Z') { pathStr += `Z `; }
+                        }
+                        return pathStr; 
+                    }
+                } catch(e) {}
+            }
+            return null; 
+        }
+
+        // ==========================================
+        // ★ 极其核心的导出修复：完美处理手绘数据
+        // ==========================================
+        window.exportFont = function() {
+            try {
+                let customName = document.getElementById('fontNameInput').value.trim() || 'DenMo手写体';
+                const glyphs = [];
+                
+                let maxCP = 0xFFFF;
+                for (let k in fontPaths) if (parseInt(k) > maxCP) maxCP = parseInt(k);
+                for (let k in handDrawnData) if (parseInt(k) > maxCP) maxCP = parseInt(k);
+
+                const tofuPath = new opentype.Path();
+                tofuPath.moveTo(100, 0); tofuPath.lineTo(900, 0); tofuPath.lineTo(900, 800); tofuPath.lineTo(100, 800); tofuPath.lineTo(100, 0);
+                tofuPath.moveTo(100, 0); tofuPath.lineTo(900, 800); tofuPath.moveTo(900, 0); tofuPath.lineTo(100, 800);
+
+                for (let i = 0; i <= maxCP; i++) {
+                    if (i >= 0xD800 && i <= 0xDFFF) continue; 
+                    
+                    const glyphPath = new opentype.Path();
+                    let advanceWidth = 1000;
+
+                    // ★ 极其核心：优先处理你手绘的极其粗犷的线条！
+                    if (handDrawnData[i] && handDrawnData[i].length > 0) {
+                        // 极其暴力的点阵转贝塞尔：直接连接这些点
+                        handDrawnData[i].forEach(stroke => {
+                            if (stroke.length === 0) return;
+                            // opentype 坐标是 Y 轴向上，需极其翻转
+                            glyphPath.moveTo(stroke[0].x, 1000 - stroke[0].y);
+                            for (let j = 1; j < stroke.length; j++) {
+                                // 为了显得平滑，可以加点曲线，这里极其纯粹地直线连接
+                                glyphPath.lineTo(stroke[j].x, 1000 - stroke[j].y);
+                            }
+                        });
+                    } 
+                    // 如果没有手绘，但有自动提取的极其完美的形状
+                    else if (fontPaths[i] && fallbackChain.length > 0) {
+                        try {
+                            const g = fallbackChain[0].charToGlyph(String.fromCodePoint(i));
+                            if(g) glyphPath.commands = g.path.commands; // 直接极其暴力地继承
+                        } catch(e) {}
+                    } 
+                    // 极其无奈的空缺
+                    else {
+                        if (i >= 0x20 && !(i >= 0x7F && i <= 0x9F)) {
+                            glyphPath.commands = tofuPath.commands;
+                        }
+                    }
+
+                    glyphs.push(new opentype.Glyph({
+                        name: 'uni' + i.toString(16).toUpperCase().padStart(4, '0'),
+                        unicode: i, advanceWidth: advanceWidth, path: glyphPath
+                    }));
+                }
+
+                const font = new opentype.Font({
+                    familyName: customName, styleName: 'Regular', unitsPerEm: 1000, ascender: 800, descender: -200, glyphs: glyphs
+                });
+
+                const buffer = font.toArrayBuffer();
+                const blob = new Blob([buffer], { type: 'font/ttf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `${customName}.ttf`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                
+                statusText.innerText = `✅ 极其成功！已通过蓝色链接导出！`;
+            } catch (err) {
+                console.error(err);
+                alert("极其遗憾，导出失败了：" + err.message);
+            }
+        }
+
+        rebuildList();
+    </script>
+</body>
+</html>
