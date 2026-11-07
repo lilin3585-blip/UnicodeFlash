@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极其终极：多平面手绘 + 快闪 + 橡皮擦</title>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <style>
+        :root { --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #1f6feb; --success: #3fb950; --error: #ff7b72; --purple: #a371f7; --gold: #d29922;}
+        html, body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; display: flex; flex-direction: column; }
+        
+        .top-bar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px; display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; z-index: 10; }
+        input[type="text"] { background: #000; color: #fff; border: 1px solid var(--border); padding: 8px; border-radius: 6px; outline: none; font-size: 15px; }
+        input[type="file"] { color: #fff; font-size: 13px; max-width: 120px; }
+        input[type="range"] { width: 100px; }
+        
+        button, select { background: var(--accent); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; outline: none; transition: 0.2s;}
+        button.green { background: var(--success); }
+        button.red { background: #da3633; }
+        button.purple { background: var(--purple); }
+        button.active-tool { background: #ff7b72; color: #fff; box-shadow: 0 0 10px #ff7b72; }
+        select { background: #000; border: 1px solid var(--border); padding: 8px; }
+
+        .speed-control { display: flex; align-items: center; gap: 5px; font-size: 13px; font-family: monospace; color: var(--success); }
+
+        .main-area { display: flex; flex: 1; overflow: hidden; }
+        
+        /* 左侧调色盘 */
+        .char-list { width: 220px; overflow-y: auto; border-right: 1px solid var(--border); background: #090c10; display: flex; flex-wrap: wrap; align-content: flex-start; padding: 5px; gap: 5px; scroll-behavior: auto; }
+        .char-btn { 
+            width: 36px; height: 36px; background: #161b22; color: #fff; border: 1px solid var(--border); border-radius: 4px; font-size: 18px; 
+            display: flex; justify-content: center; align-items: center; padding: 0; cursor: pointer; font-family: 'ImportedFont', sans-serif; 
+        }
+        .char-btn:hover { border-color: var(--accent); }
+        .char-btn.active { border-color: var(--accent); background: var(--accent); transform: scale(1.1); z-index: 2; }
+        .char-btn.drawn { background: #2ea043; border-color: #3fb950; }
+
+        .canvas-area { flex: 1; display: flex; justify-content: center; align-items: center; padding: 15px; position: relative; gap: 20px; flex-wrap: wrap;}
+        
+        .grid-canvas-container {
+            width: 45%; max-width: 450px; aspect-ratio: 1; position: relative; flex-shrink: 0;
+        }
+        .grid-canvas-container canvas { background: #000; border: 1px solid var(--border); border-radius: 8px; width: 100%; height: 100%; touch-action: none; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
+        
+        /* 橡皮擦激活时的极其明显的红色光标反馈 */
+        .grid-canvas-container canvas.eraser-mode { cursor: cell; border-color: #ff7b72; }
+
+        .flash-container {
+            width: 45%; max-width: 450px; aspect-ratio: 1; background: #000; border: 1px solid var(--border); border-radius: 8px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            overflow: hidden; box-shadow: inset 0 0 50px rgba(0,0,0,1); flex-shrink: 0;
+        }
+        #flashChar {
+            font-size: 30vmin; line-height: 1; color: #ffffff;
+            font-family: 'ImportedFont', 'Apple SC', sans-serif;
+            transform: translateZ(0);
+        }
+        #flashCode {
+            font-size: 5vmin; font-family: ui-monospace, monospace; color: #ff0000; font-weight: bold; margin-top: 20px; letter-spacing: 2px;
+        }
+
+        .info { position: absolute; top: 5px; right: 15px; font-family: monospace; font-size: 14px; color: var(--success); }
+        .status { position: absolute; bottom: 5px; left: 15px; font-family: monospace; font-size: 14px; color: var(--purple); }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <input type="file" id="ttfInput" accept=".ttf,.otf,.woff,.woff2" multiple>
+        <input type="text" id="fontNameInput" placeholder="导出名" value="DenMoSong_Pro">
+        
+        <select id="planeSelect">
+            <option value="bmp">第一平面: 基础区</option>
+            <option value="ext-a">扩展 A</option>
+            <option value="ext-b">第二平面: 扩展 B</option>
+        </select>
+
+        <!-- ★ 极其核心的橡皮擦按钮 -->
+        <button id="eraserBtn" onclick="toggleEraser()">🧽 橡皮擦</button>
+        <button id="clearBtn" class="red" onclick="clearCurrentChar()">💣 清空当前字</button>
+
+        <div class="speed-control">
+            <span>速度:</span>
+            <input type="range" id="speedSlider" min="1" max="120" value="120">
+            <span id="speedText">120字/秒</span>
+        </div>
+
+        <button class="purple" onclick="startEngine()">🔥 自动提取</button>
+        <button class="red" onclick="stopEngine()">⏹ 停止</button>
+        <button class="green" onclick="exportFont()">导出 TTF</button>
+    </div>
+
+    <div class="main-area">
+        <div class="char-list" id="charList"></div>
+        
+        <div class="canvas-area">
+            <div class="info" id="infoText">当前码点: 未选中</div>
+            <div class="status" id="statusText">状态: 极其自由的手绘模式</div>
+            
+            <div class="grid-canvas-container">
+                <canvas id="drawArea" width="1000" height="1000"></canvas>
+            </div>
+
+            <div class="flash-container">
+                <div id="flashChar">A</div>
+                <div id="flashCode">U+0041</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawArea');
+        const ctx = canvas.getContext('2d');
+        const charList = document.getElementById('charList');
+        const infoText = document.getElementById('infoText');
+        const statusText = document.getElementById('statusText');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedText = document.getElementById('speedText');
+        const flashChar = document.getElementById('flashChar');
+        const flashCode = document.getElementById('flashCode');
+        const planeSelect = document.getElementById('planeSelect');
+        const eraserBtn = document.getElementById('eraserBtn');
+        
+        let fallbackChain = []; 
+        let fontPaths = {}; 
+        let handDrawnData = {}; 
+        
+        let activeBtn = null; 
+        let currentCP = 0x4E00; 
+        let isDrawing = false;
+        let isErasing = false; // ★ 极其变态的橡皮擦状态
+        let eraserPath = [];   // 记录极其狂暴的擦除轨迹
+        let currentPath = []; 
+        let isAutoRunning = false;
+
+        let rafId = null;
+        let lastTime = performance.now();
+        let accumulator = 0;
+        let SPEED = 120; 
+
+        let currentStartCP = 0x0000;
+        let currentEndCP = 0xFFFF;
+        let pipelineIndex = currentStartCP;
+
+        speedSlider.addEventListener('input', (e) => {
+            SPEED = parseInt(e.target.value);
+            speedText.innerText = `${SPEED}字/秒`;
+        });
+
+        // ★ 极其关键的橡皮擦模式切换
+        window.toggleEraser = function() {
+            isErasing = !isErasing;
+            if (isErasing) {
+                eraserBtn.classList.add('active-tool');
+                eraserBtn.innerText = "🧽 橡皮擦 (极其狂暴抹除中)";
+                canvas.classList.add('eraser-mode');
+                statusText.innerText = "状态: 极其危险的擦除模式！划过即抹杀整条笔画！";
+                statusText.style.color = "#ff7b72";
+            } else {
+                eraserBtn.classList.remove('active-tool');
+                eraserBtn.innerText = "🧽 橡皮擦";
+                canvas.classList.remove('eraser-mode');
+                statusText.innerText = "状态: 极其自由的手绘模式已恢复";
+                statusText.style.color = "var(--purple)";
+            }
+        }
+
+        window.clearCurrentChar = function() {
+            if(!fontPaths[currentCP] && !handDrawnData[currentCP]) return;
+            fontPaths[currentCP] = null;
+            handDrawnData[currentCP] = null;
+            const btn = document.getElementById(`char-${currentCP}`);
+            if(btn) btn.classList.remove('drawn');
+            drawBaseGrid();
+            statusText.innerText = "状态: 当前字符已被极其彻底地清空！";
+        }
+
+        function rebuildList() {
+            charList.innerHTML = ''; 
+            const mode = planeSelect.value;
+            
+            if (mode === 'bmp') { currentStartCP = 0x0000; currentEndCP = 0xFFFF; }
+            else if (mode === 'ext-a') { currentStartCP = 0x3400; currentEndCP = 0x4DBF; }
+            else if (mode === 'ext-b') { currentStartCP = 0x20000; currentEndCP = 0x2A6DF; }
+
+            const fragment = document.createDocumentFragment();
+            for (let i = currentStartCP; i <= currentEndCP; i++) {
+                if (i >= 0xD800 && i <= 0xDFFF) continue; 
+                const btn = document.createElement('button');
+                btn.className = 'char-btn';
+                btn.id = `char-${i}`;
+                
+                btn.onclick = () => {
+                    if (isAutoRunning) return; 
+                    selectChar(i);
+                };
+                
+                btn.innerText = (i < 0x20 || (i >= 0x7F && i <= 0x9F)) ? '·' : String.fromCodePoint(i);
+                if (handDrawnData[i] || fontPaths[i]) btn.classList.add('drawn');
+                fragment.appendChild(btn);
+            }
+            charList.appendChild(fragment);
+            selectChar(currentStartCP);
+        }
+
+        planeSelect.addEventListener('change', rebuildList);
+
+        function selectChar(cp) {
+            currentCP = cp;
+            const btn = document.getElementById(`char-${cp}`);
+            
+            if (activeBtn) activeBtn.classList.remove('active');
+            if (btn) {
+                btn.classList.add('active');
+                activeBtn = btn;
+                charList.scrollTop = btn.offsetTop - (charList.clientHeight / 2);
+            }
+
+            infoText.innerText = `当前码点: U+${cp.toString(16).toUpperCase()}`;
+            flashChar.textContent = String.fromCodePoint(cp);
+            flashCode.textContent = 'U+' + cp.toString(16).toUpperCase();
+
+            drawBaseGrid();
+        }
+
+        document.getElementById('ttfInput').addEventListener('change', async function(e) {
+            const files = e.target.files;
+            if (!files.length) return;
+            statusText.innerText = `正在极其拼命地解析 ${files.length} 个字体...`;
+            fallbackChain = [];
+            let firstFontBuffer = null;
+
+            for (let f of files) {
+                const buffer = await new Promise((res) => {
+                    const r = new FileReader();
+                    r.onload = (evt) => res(evt.target.result);
+                    r.readAsArrayBuffer(f);
+                });
+                if (!firstFontBuffer) firstFontBuffer = buffer;
+                try { fallbackChain.push(opentype.parse(buffer)); } catch(err) {}
+            }
+
+            try {
+                const blob = new Blob([firstFontBuffer], { type: 'font/ttf' });
+                const fontFace = new FontFace('ImportedFont', `url(${URL.createObjectURL(blob)})`);
+                await fontFace.load();
+                document.fonts.add(fontFace);
+                statusText.innerText = `✅ ${files.length} 个字体已注入，极其完美！`;
+            } catch (err) {}
+        });
+
+        function drawBaseGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#30363d'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(500, 0); ctx.lineTo(500, 1000);
+            ctx.moveTo(0, 500); ctx.lineTo(1000, 500);
+            ctx.moveTo(0, 800); ctx.lineTo(1000, 800); ctx.stroke();
+
+            if (fontPaths[currentCP]) {
+                const path = new Path2D(fontPaths[currentCP]);
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.stroke(path);
+            }
+
+            if (handDrawnData[currentCP]) {
+                ctx.strokeStyle = '#3fb950'; 
+                ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                handDrawnData[currentCP].forEach(stroke => {
+                    if(stroke.length < 2) return;
+                    ctx.beginPath();
+                    ctx.moveTo(stroke[0].x, stroke[0].y);
+                    for(let i=1; i<stroke.length; i++) {
+                        ctx.lineTo(stroke[i].x, stroke[i].y);
+                    }
+                    ctx.stroke();
+                });
+            }
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: (e.clientX - rect.left) * (canvas.width / rect.width), y: (e.clientY - rect.top) * (canvas.height / rect.height) };
+        }
+
+        // ★ 极其硬核的距离计算，用于判断橡皮擦是否碰到了极其倒霉的笔画
+        function isPointNearSegment(px, py, x1, y1, x2, y2, threshold) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const lengthSq = dx*dx + dy*dy;
+            if (lengthSq === 0) return Math.hypot(px - x1, py - y1) <= threshold;
+            let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+            t = Math.max(0, Math.min(1, t));
+            const projX = x1 + t * dx;
+            const projY = y1 + t * dy;
+            return Math.hypot(px - projX, py - projY) <= threshold;
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (isAutoRunning) return; 
+            e.preventDefault(); 
+            const pos = getPos(e);
+            
+            if (isErasing) {
+                isDrawing = true;
+                eraserPath = [pos];
+                // 极其瞬间地触发一次极其残暴的擦除
+                performEraser(eraserPath);
+            } else {
+                isDrawing = true; 
+                currentPath = [pos];
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDrawing) return;
+            e.preventDefault(); 
+            const pos = getPos(e); 
+            
+            if (isErasing) {
+                const lastPos = eraserPath[eraserPath.length - 1];
+                eraserPath.push(pos);
+                // 极其实时地触发擦除
+                performEraser([lastPos, pos]);
+                
+                // 极其生草的红线特效
+                ctx.strokeStyle = '#ff7b72'; 
+                ctx.lineWidth = 40; 
+                ctx.lineCap = 'round'; 
+                ctx.lineJoin = 'round';
+                ctx.globalAlpha = 0.5;
+                ctx.beginPath(); ctx.moveTo(lastPos.x, lastPos.y); ctx.lineTo(pos.x, pos.y); ctx.stroke();
+                ctx.globalAlpha = 1.0;
+                
+            } else {
+                currentPath.push(pos);
+                ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.beginPath(); 
+                const last = currentPath[currentPath.length - 2]; 
+                ctx.moveTo(last.x, last.y); 
+                ctx.lineTo(pos.x, pos.y); 
+                ctx.stroke();
+            }
+        });
+
+        canvas.addEventListener('pointerup', () => {
+            if (!isDrawing) return; 
+            isDrawing = false;
+            
+            if (isErasing) {
+                // 擦除完毕，极其顺滑地重绘极其残缺的底图
+                drawBaseGrid();
+            } else {
+                if (currentPath.length > 1) {
+                    if (!handDrawnData[currentCP]) handDrawnData[currentCP] = [];
+                    handDrawnData[currentCP].push(currentPath);
+                    const btn = document.getElementById(`char-${currentCP}`);
+                    if(btn) btn.classList.add('drawn');
+                }
+            }
+        });
+
+        // ★ 极其变态的擦除核心算法：一整笔抹杀！
+        function performEraser(eraserLine) {
+            let erasedAny = false;
+            const threshold = 40; // 极其宽的判定阈值
+
+            if (handDrawnData[currentCP]) {
+                const strokes = handDrawnData[currentCP];
+                for (let i = strokes.length - 1; i >= 0; i--) {
+                    let strokeHit = false;
+                    const stroke = strokes[i];
+                    
+                    // 极其疯狂地遍历极其细腻的点，极其精准地找出碰撞
+                    for (let j = 0; j < stroke.length; j++) {
+                        for (let k = 0; k < eraserLine.length; k++) {
+                            if (isPointNearSegment(stroke[j].x, stroke[j].y, eraserLine[k].x, eraserLine[k].y, eraserLine[Math.min(k+1, eraserLine.length-1)].x, eraserLine[Math.min(k+1, eraserLine.length-1)].y, threshold)) {
+                                strokeHit = true;
+                                break;
+                            }
+                        }
+                        if (strokeHit) break;
+                    }
+
+                    if (strokeHit) {
+                        strokes.splice(i, 1); // 极其无情地整笔删除
+                        erasedAny = true;
+                    }
+                }
+            }
+
+            if (erasedAny) {
+                // 极其实时地反馈清空重绘
+                drawBaseGrid();
+                const btn = document.getElementById(`char-${currentCP}`);
+                if(btn && (!handDrawnData[currentCP] || handDrawnData[currentCP].length === 0) && !fontPaths[currentCP]) {
+                    btn.classList.remove('drawn');
+                }
+            }
+        }
+
+        function startEngine() {
+            if (fallbackChain.length === 0) return alert("极其需要先导入 TTF！");
+            if (isAutoRunning) return;
+            
+            isAutoRunning = true;
+            pipelineIndex = currentStartCP;
+            lastTime = performance.now();
+            accumulator = 0;
+            statusText.innerText = `状态: 🚀 极其狂暴的 120Hz 提取中！`;
+
+            function loop(now) {
+                if (!isAutoRunning) return;
+                let deltaTime = now - lastTime;
+                lastTime = now;
+                accumulator += deltaTime * (SPEED / 1000);
+                
+                let lastProcessedChar = null;
+                let lastPathStr = null;
+
+                while (accumulator >= 1) {
+                    if (pipelineIndex >= 0xD800 && pipelineIndex <= 0xDFFF) pipelineIndex = 0xE000;
+                    if (pipelineIndex < 0x20 || (pipelineIndex >= 0x7F && pipelineIndex <= 0x9F)) pipelineIndex++;
+                    if (pipelineIndex > currentEndCP) { stopEngine(); return; }
+
+                    const pathStr = extractGlyph(pipelineIndex);
+                    
+                    if (pathStr) {
+                        if (!handDrawnData[pipelineIndex]) fontPaths[pipelineIndex] = pathStr;
+                        lastProcessedChar = pipelineIndex;
+                        lastPathStr = pathStr;
+                    }
+                    pipelineIndex++;
+                    accumulator -= 1;
+                }
+
+                if (lastProcessedChar !== null) {
+                    currentCP = lastProcessedChar; 
+                    drawBaseGrid();
+                    if (fontPaths[currentCP]) {
+                        const path = new Path2D(fontPaths[currentCP]);
+                        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                        ctx.stroke(path);
+                    }
+                    infoText.innerText = `当前码点: U+${lastProcessedChar.toString(16).toUpperCase()}`;
+                    flashChar.textContent = String.fromCodePoint(lastProcessedChar);
+                    flashCode.textContent = 'U+' + lastProcessedChar.toString(16).toUpperCase();
+
+                    if (lastProcessedChar % 10 === 0) {
+                        if (activeBtn) { activeBtn.classList.remove('active'); activeBtn.classList.add('drawn'); }
+                        const currentBtn = document.getElementById(`char-${lastProcessedChar}`);
+                        if (currentBtn) {
+                            currentBtn.classList.add('active');
+                            activeBtn = currentBtn;
+                            charList.scrollTop = currentBtn.offsetTop - (charList.clientHeight / 2);
+                        }
+                    }
+                }
+                rafId = requestAnimationFrame(loop);
+            }
+            rafId = requestAnimationFrame(loop);
+        }
+
+        function stopEngine() {
+            isAutoRunning = false;
+            if (rafId) cancelAnimationFrame(rafId);
+            statusText.innerText = "状态: 待机 (极其自由的手绘模式)";
+        }
+
+        function extractGlyph(cp) {
+            const charStr = String.fromCodePoint(cp);
+            for (let i = 0; i < fallbackChain.length; i++) {
+                try {
+                    const glyph = fallbackChain[i].charToGlyph(charStr);
+                    if (glyph && glyph.path && glyph.path.commands.length > 0) {
+                        const pathObj = glyph.path;
+                        const box = pathObj.getBoundingBox();
+                        const boxW = box.x2 - box.x1;
+                        const boxH = box.y2 - box.y1;
+
+                        let scale = 1;
+                        if (boxW > 0 && boxH > 0) scale = Math.min(800 / boxW, 800 / boxH); 
+
+                        const offsetX = 500 - (boxW * scale) / 2 - (box.x1 * scale);
+                        const offsetY = 800 - (boxH * scale) - (box.y1 * scale);
+
+                        let pathStr = "";
+                        for (const cmd of pathObj.commands) {
+                            const px = (cmd.x !== undefined) ? (cmd.x * scale + offsetX) : 0;
+                            const py = (cmd.y !== undefined) ? (800 - (cmd.y * scale + offsetY)) : 0;
+                            const px1 = (cmd.x1 !== undefined) ? (cmd.x1 * scale + offsetX) : 0;
+                            const py1 = (cmd.y1 !== undefined) ? (800 - (cmd.y1 * scale + offsetY)) : 0;
+                            const px2 = (cmd.x2 !== undefined) ? (cmd.x2 * scale + offsetX) : 0;
+                            const py2 = (cmd.y2 !== undefined) ? (800 - (cmd.y2 * scale + offsetY)) : 0;
+
+                            if (cmd.type === 'M') { pathStr += `M ${px} ${py} `; }
+                            else if (cmd.type === 'L') { pathStr += `L ${px} ${py} `; }
+                            else if (cmd.type === 'C') { pathStr += `C ${px1} ${py1}, ${px2} ${py2}, ${px} ${py} `; }
+                            else if (cmd.type === 'Q') { pathStr += `Q ${px1} ${py1}, ${px} ${py} `; }
+                            else if (cmd.type === 'Z') { pathStr += `Z `; }
+                        }
+                        return pathStr; 
+                    }
+                } catch(e) {}
+            }
+            return null; 
+        }
+
+        function exportFont() {
+            let customName = document.getElementById('fontNameInput').value.trim() || 'DenMoSong_Pro';
+            const glyphs = [];
+            let maxCP = 0xFFFF;
+            for (let k in fontPaths) if (parseInt(k) > maxCP) maxCP = parseInt(k);
+            for (let k in handDrawnData) if (parseInt(k) > maxCP) maxCP = parseInt(k);
+
+            const tofuPath = new opentype.Path();
+            tofuPath.moveTo(100, 0); tofuPath.lineTo(900, 0); tofuPath.lineTo(900, 800); tofuPath.lineTo(100, 800); tofuPath.lineTo(100, 0);
+            tofuPath.moveTo(100, 0); tofuPath.lineTo(900, 800); tofuPath.moveTo(900, 0); tofuPath.lineTo(100, 800);
+
+            for (let i = 0; i <= maxCP; i++) {
+                if (i >= 0xD800 && i <= 0xDFFF) continue; 
+                let path = new opentype.Path();
+                if (fontPaths[i]) {
+                    try {
+                        if(fallbackChain.length > 0) {
+                             const g = fallbackChain[0].charToGlyph(String.fromCodePoint(i));
+                             if(g) path = g.path;
+                        }
+                    } catch(e) {}
+                } else {
+                    if (i >= 0x20 && !(i >= 0x7F && i <= 0x9F)) path = tofuPath;
+                }
+                glyphs.push(new opentype.Glyph({
+                    name: 'uni' + i.toString(16).toUpperCase().padStart(4, '0'),
+                    unicode: i, advanceWidth: 1000, path: path
+                }));
+            }
+
+            const font = new opentype.Font({
+                familyName: customName, styleName: 'Regular', unitsPerEm: 1000, ascender: 800, descender: -200, glyphs: glyphs
+            });
+
+            const buffer = font.toArrayBuffer();
+            const blob = new Blob([buffer], { type: 'font/ttf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${customName}.ttf`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            alert(`✅ 极其成功！已导出 [${customName}].ttf`);
+        }
+
+        rebuildList();
+    </script>
+</body>
+</html>
