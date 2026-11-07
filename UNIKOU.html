@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>极其终极：多级暴力下载引擎</title>
+    <title>极其终极：原生网页流下载</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
         :root { --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #1f6feb; --success: #3fb950; --error: #ff7b72; --purple: #a371f7; --gold: #d29922;}
@@ -18,13 +18,12 @@
         button.active-tool { background: #ff7b72; color: #fff; box-shadow: 0 0 10px #ff7b72; }
         select { background: #000; border: 1px solid var(--border); padding: 8px; }
 
-        /* 极其核心的蓝色文字下载按钮 */
         .download-link {
             color: #58a6ff; font-size: 15px; font-weight: bold; cursor: pointer;
             text-decoration: underline; margin-left: 15px; user-select: none;
-            transition: color 0.2s;
+            padding: 8px; border-radius: 6px; background: rgba(88,166,255,0.1);
         }
-        .download-link:hover { color: #79c0ff; text-shadow: 0 0 8px rgba(88, 166, 255, 0.5); }
+        .download-link:hover { color: #79c0ff; background: rgba(88,166,255,0.2); }
 
         .speed-control { display: flex; align-items: center; gap: 5px; font-size: 13px; font-family: monospace; color: var(--success); }
 
@@ -62,7 +61,7 @@
 
     <div class="top-bar">
         <input type="file" id="ttfInput" accept=".ttf,.otf,.woff,.woff2" multiple>
-        <input type="text" id="fontNameInput" placeholder="字体名" value="NotoSans_Pro">
+        <input type="text" id="fontNameInput" placeholder="字体名" value="MyCustomFont">
         
         <select id="planeSelect">
             <option value="bmp">第一平面: 基础区</option>
@@ -82,7 +81,7 @@
         <button class="purple" onclick="startEngine()" style="background: #a371f7;">🔥 自动提取</button>
         <button class="red" onclick="stopEngine()" style="background: #da3633;">⏹ 停止</button>
         
-        <span class="download-link" onclick="exportFont()">导出 TTF</span>
+        <span class="download-link" onclick="exportFont()">💾 点击保存字体</span>
     </div>
 
     <div class="main-area">
@@ -406,11 +405,11 @@
         }
 
         // ==========================================
-        // ★ 极其暴力的多级降级下载引擎！
+        // ★ 极其暴力的原生流下载
         // ==========================================
         window.exportFont = function() {
             try {
-                let customName = document.getElementById('fontNameInput').value.trim() || 'DenMo手写体';
+                let customName = document.getElementById('fontNameInput').value.trim() || 'MyCustomFont';
                 const glyphs = [];
                 
                 let maxCP = 0xFFFF;
@@ -459,76 +458,36 @@
                 });
 
                 const buffer = font.toArrayBuffer();
-                const blob = new Blob([buffer], { type: 'font/ttf' });
+                // ★ 极其核心的格式伪装：把它伪装成极其普通的二进制流
+                const blob = new Blob([buffer], { type: 'application/octet-stream' });
                 const fileName = `${customName}.ttf`;
-
-                // ==========================================
-                // 方案 A：极其标准的 Blob 下载（现代浏览器）
-                // ==========================================
-                try {
-                    if (window.navigator && window.navigator.msSaveOrOpenBlob) {
-                        // 极其罕见的 IE/Edge 兼容
-                        window.navigator.msSaveOrOpenBlob(blob, fileName);
-                    } else {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.style.display = 'none';
-                        a.href = url;
-                        a.download = fileName;
-                        document.body.appendChild(a);
-                        a.click();
-                        setTimeout(() => {
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                        }, 100);
-                    }
-                    statusText.innerText = `✅ 已触发【Blob 极速下载】！`;
-                    return;
-                } catch (e) {
-                    console.warn("Blob 下载失败了，正在极其果断地降级...", e);
-                }
-
-                // ==========================================
-                // 方案 B：极其暴力的 Data URI 下载
-                // ==========================================
-                try {
-                    const reader = new FileReader();
-                    reader.onloadend = function() {
-                        const dataUrl = reader.result;
-                        const a = document.createElement('a');
-                        a.href = dataUrl;
-                        a.download = fileName;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        statusText.innerText = `✅ 已触发【DataURI 降级下载】！`;
-                    };
-                    reader.readAsDataURL(blob);
-                    return;
-                } catch (e) {
-                    console.warn("DataURI 失败了，正在极其果断地降级...", e);
-                }
-
-                // ==========================================
-                // 方案 C：极其无奈但有用的新窗口打开（手动保存）
-                // ==========================================
                 const url = URL.createObjectURL(blob);
-                const win = window.open(url, '_blank');
-                if (win) {
-                    statusText.innerText = `⚠️ 已在新标签页打开，请点击浏览器分享按钮保存！`;
-                } else {
-                    // ==========================================
-                    // 方案 D：极其绝望的终极保底——直接弹窗给 Base64
-                    // ==========================================
-                    const reader = new FileReader();
-                    reader.onload = function() {
-                        prompt("⚠️ 浏览器极其暴力地拦截了下载！请极其手动的复制这串 Base64 代码去解码：", reader.result);
-                    };
-                    reader.readAsText(blob);
-                }
+
+                statusText.innerText = "正在极其努力地唤起系统下载...";
+                statusText.style.color = "#d29922";
+
+                // ★ 极其暴力的原生窗口重定向流！Safari 最吃这一套！
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                // 极其关键的 target="_blank"，让 iOS 的文件系统直接接管
+                a.target = '_blank';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+
+                // 极其微小的延迟，防止 Safari 判定为恶意点击
+                setTimeout(() => {
+                    a.click();
+                    statusText.innerText = "✅ 已下发极其硬核的下载指令，请检查文件 App 或下载列表！";
+                    statusText.style.color = "#3fb950";
+                    setTimeout(() => document.body.removeChild(a), 1000);
+                }, 50);
+
             } catch (err) {
                 console.error(err);
-                alert("极其遗憾，连底层打包都失败了：" + err.message);
+                alert("极其遗憾，打包彻底崩溃：" + err.message);
+                statusText.innerText = "❌ 打包崩溃";
+                statusText.style.color = "#ff7b72";
             }
         }
 
