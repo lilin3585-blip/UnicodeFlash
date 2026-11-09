@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>汉查网 · 东亚古文字查字</title>
+  
+  <style>
+    /* ---------- 1. 字体声明 ---------- */
+    /* 强制使用本地/服务器上的 ttf 文件加载 BabelStoneHan */
+    @font-face {
+      font-family: 'BabelStoneHan';
+      src: url('BabelStoneHan.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    /* 正文继续保留 Jigmo 全家桶 */
+    @font-face { font-family: "Jigmo"; font-display: swap; src: url("fonts/Jigmo.ttf") format("truetype"); }
+    @font-face { font-family: "Jigmo2"; font-display: swap; src: url("fonts/Jigmo2.ttf") format("truetype"); }
+    @font-face { font-family: "Jigmo3"; font-display: swap; src: url("fonts/Jigmo3.ttf") format("truetype"); }
+
+    *, *::before, *::after, input, textarea, button, select {
+      /* 全局字体回退链：优先 Jigmo，然后中华书局，然后标准宋体 */
+      font-family: "Jigmo", "Jigmo2", "Jigmo3", "ZhongHuaSong", "HanaMinA", "Noto Serif SC", "Times New Roman", "明朝", "KaiTi", serif !important;
+      box-sizing: border-box;
+    }
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #f9f7f2; color: #2e2b28; line-height: 1.5; padding: 1.5rem;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+
+    .site-wrapper {
+      max-width: 1000px; width: 100%; background: #ffffffdd; backdrop-filter: blur(8px);
+      border-radius: 2.5rem; box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.15);
+      padding: 2.5rem 2rem; border: 1px solid #ebe5db;
+    }
+
+    /* --- Logo 标题样式（专属 BabelStoneHan 字体） --- */
+    .site-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .site-title { 
+      font-family: 'BabelStoneHan', serif !important; /* 强制使用 BabelStone Han */
+      font-size: 2.8rem; 
+      font-weight: normal; 
+      color: #3b3229; 
+      letter-spacing: 4px;
+      line-height: 1.2;
+    }
+    .site-tag {
+      font-size: 1.1rem; 
+      background: #e9e0d2; 
+      color: #5a4e40; 
+      padding: 0.2rem 1rem; 
+      border-radius: 40px; 
+      font-weight: bold;
+    }
+    
+    .user-bar { display: flex; justify-content: flex-end; align-items: center; gap: 0.8rem; margin-bottom: 1rem; }
+    .user-info { font-size: 0.9rem; color: #7b6e5f; background: #ece4d9; padding: 0.3rem 1rem; border-radius: 40px; }
+    .btn-login, .btn-register, .btn-logout, .btn-upload { border: none; border-radius: 40px; padding: 0.5rem 1.4rem; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: 0.15s; }
+    .btn-login { background: #5f4e3c; color: white; }
+    .btn-register { background: #a8886a; color: white; }
+    .btn-logout { background: #d9cfc0; color: #3b3229; }
+    .btn-upload { background: #5f4e3c; color: white; }
+
+    .subhead { color: #6e6254; margin-bottom: 2rem; font-size: 1rem; border-left: 4px solid #cbb9a4; padding-left: 1rem; }
+
+    .search-section { display: flex; gap: 0.8rem; margin-bottom: 1.5rem; }
+    .search-box { flex: 1; display: flex; border: 1.5px solid #d9cfc0; border-radius: 60px; background: #fefcf8; overflow: hidden; }
+    .search-box input { flex: 1; border: none; background: transparent; padding: 1rem 1.5rem; font-size: 1.5rem; outline: none; }
+    .search-box input::placeholder { color: #b1a392; font-size: 1rem; }
+    .search-box button { background: #5f4e3c; border: none; color: white; padding: 0 2rem; font-size: 1rem; cursor: pointer; }
+
+    .examples { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 2rem; flex-wrap: wrap; }
+    .examples-label { font-size: 0.9rem; color: #7b6e5f; text-transform: uppercase; }
+    .example-btn { background: #ede7df; border: none; border-radius: 40px; padding: 0.5rem 1.4rem; font-size: 1.5rem; cursor: pointer; color: #3b3229; }
+
+    .result-card { background: #faf6f0; border-radius: 2rem; padding: 2rem; border: 1px solid #e6ddd2; min-height: 220px; display: flex; flex-direction: column; }
+    .char-header { display: flex; align-items: baseline; gap: 1rem; border-bottom: 1px dashed #d9cfc0; padding-bottom: 1rem; margin-bottom: 1.2rem; }
+    
+    .big-char { font-size: 4.5rem; line-height: 1.1; color: #1e1a16; }
+    .big-image { max-height: 150px; max-width: 100%; object-fit: contain; border: 1px solid #d9cfc0; border-radius: 10px; padding: 5px; background: white;}
+
+    .char-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .meta-item { display: flex; align-items: center; gap: 0.35rem; background: #ece4d9; padding: 0.2rem 1rem; border-radius: 40px; font-size: 1rem; }
+    .meta-label { font-size: 0.8rem; font-weight: 600; color: #8c7b68; }
+    .meta-value { font-weight: 500; color: #1f1a15; }
+    
+    .tag-nom { background: #e6f0e6 !important; color: #2e6b2e; }
+    .tag-zhuang { background: #f0ece6 !important; color: #6b4e2e; }
+    .tag-bouyei { background: #e6eaf0 !important; color: #2e4e6b; }
+    .tag-other { background: #f0e6f0 !important; color: #6b2e6b; }
+
+    .def-title { font-size: 0.9rem; font-weight: 600; color: #8c7b68; margin-bottom: 0.3rem; }
+    .def-text { font-size: 1.2rem; background: #fffcf8; padding: 1rem 1.4rem; border-radius: 1.4rem; border-left: 5px solid #b8a48e; }
+    .def-text p { margin: 0 0 0.75rem 0; }
+    .def-text p:last-child { margin-bottom: 0; }
+    .note { margin-top: 1rem; font-size: 0.9rem; color: #8b7b6a; background: #f2ebe3; padding: 0.6rem 1.2rem; border-radius: 30px; align-self: flex-start; }
+
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #a19280; text-align: center; gap: 10px; }
+
+    /* 模态框及表单 */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(40, 35, 30, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: 0.2s; }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .modal { background: #fffcf8; border-radius: 2rem; padding: 2rem; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .modal h2 { font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; }
+    .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #a99c8c; }
+    .form-group { margin-bottom: 1.2rem; }
+    .form-group label { display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: #8c7b68; font-weight: bold;}
+    
+    .form-group input, .form-group select, .form-group textarea { width: 100%; border: 1.5px solid #d9cfc0; border-radius: 1rem; padding: 0.8rem 1.2rem; font-size: 1.2rem; outline: none; }
+    
+    .pwd-wrapper { position: relative; display: flex; align-items: center; }
+    .pwd-wrapper input { padding-right: 3rem; }
+    .eye-btn {
+      position: absolute; right: 1rem; background: none; border: none; cursor: pointer; 
+      padding: 0; display: flex; align-items: center; justify-content: center;
+      color: #a99c8c; transition: 0.2s;
+    }
+    .eye-btn:hover { color: #5f4e3c; }
+    .eye-btn svg { width: 20px; height: 20px; fill: currentColor; }
+
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.8rem; margin-top: 1.8rem; }
+    .btn-cancel { background: #ece4d9; border: none; border-radius: 40px; padding: 0.6rem 1.6rem; cursor: pointer; }
+    .btn-submit { background: #5f4e3c; color: white; border: none; border-radius: 40px; padding: 0.6rem 1.8rem; cursor: pointer; }
+    .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #3b3229; color: white; padding: 0.8rem 2rem; border-radius: 40px; z-index: 2000; opacity: 0; transition: 0.3s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+    
+    .upload-mode-tabs { display: flex; gap: 10px; margin-bottom: 1rem; }
+    .upload-mode-tab { flex: 1; padding: 10px; text-align: center; border: 1px solid #d9cfc0; border-radius: 10px; cursor: pointer; font-weight: bold; color: #8c7b68; }
+    .upload-mode-tab.active { background: #5f4e3c; color: white; border-color: #5f4e3c; }
+    
+    .file-upload-wrapper {
+      border: 2px dashed #d9cfc0; border-radius: 1rem; padding: 2rem 1rem; text-align: center; background: #fefcf8; cursor: pointer; transition: 0.2s; position: relative;
+    }
+    .file-upload-wrapper:hover { border-color: #a8886a; background: #faf6f0; }
+    .file-upload-wrapper input[type="file"] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .file-upload-icon { font-size: 2rem; margin-bottom: 0.5rem; color: #a8886a; }
+    .file-upload-text { color: #8c7b68; font-size: 0.95rem; }
+
+    .modal-switch { text-align: center; margin-top: 1.5rem; font-size: 0.9rem; color: #8b7b6a; }
+    .modal-switch a { color: #5f4e3c; font-weight: bold; text-decoration: underline; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="site-wrapper">
+    <div class="user-bar">
+      <span class="user-info" id="userInfo" style="display: none;"></span>
+      <button class="btn-login" id="loginBtn">登 录</button>
+      <button class="btn-register" id="registerBtn">注 册</button>
+      <button class="btn-logout" id="logoutBtn" style="display: none;">退出</button>
+      <button class="btn-upload" id="uploadBtn" style="display: none;">上传新字</button>
+    </div>
+
+    <!-- Logo 标题：汉查网 (专属字体) -->
+    <div class="site-header">
+      <div class="site-title">汉查网</div>
+      <span class="site-tag">多语种古文字</span>
+    </div>
+    
+    <div class="subhead">支持喃字、古壮字、布依字等。若无 Unicode，可使用图片模式录入。</div>
+
+    <div class="search-section">
+      <div class="search-box">
+        <input type="text" id="charInput" placeholder="输入文字或图片 ID…" maxlength="20" autocomplete="off">
+        <button id="searchBtn">查 询</button>
+      </div>
+    </div>
+
+    <div class="examples">
+      <span class="examples-label">示例</span>
+      <button class="example-btn" data-char="𪹣">𪹣</button>
+      <button class="example-btn" data-char="𢗝">𢗝</button>
+      <button class="example-btn" data-char="𧣕">𧣕</button>
+      <button class="example-btn" data-char="img_1" style="font-size: 1rem; padding: 0.7rem 1.4rem;">查看图片字示例</button>
+    </div>
+
+    <div class="result-card" id="resultCard"></div>
+  </div>
+
+  <!-- 登录模态框 -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal">
+      <h2>登录 <button class="modal-close" data-modal="loginModal">×</button></h2>
+      <div class="form-group"><label>用户名</label><input type="text" id="loginUsername"></div>
+      
+      <div class="form-group">
+        <label>密码</label>
+        <div class="pwd-wrapper">
+          <input type="password" id="loginPassword">
+          <button class="eye-btn" type="button" data-target="loginPassword"></button>
+        </div>
+      </div>
+
+      <div class="modal-actions"><button class="btn-cancel" data-modal="loginModal">取消</button><button class="btn-submit" id="doLoginBtn">登录</button></div>
+      <div class="modal-switch">还没有账号？<a id="switchToRegister">去注册</a></div>
+    </div>
+  </div>
+
+  <!-- 注册模态框 -->
+  <div class="modal-overlay" id="registerModal">
+    <div class="modal">
+      <h2>注册 <button class="modal-close" data-modal="registerModal">×</button></h2>
+      <div class="form-group"><label>用户名</label><input type="text" id="registerUsername"></div>
+      
+      <div class="form-group">
+        <label>密码</label>
+        <div class="pwd-wrapper">
+          <input type="password" id="registerPassword">
+          <button class="eye-btn" type="button" data-target="registerPassword"></button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>确认密码</label>
+        <div class="pwd-wrapper">
+          <input type="password" id="registerPasswordConfirm">
+          <button class="eye-btn" type="button" data-target="registerPasswordConfirm"></button>
+        </div>
+      </div>
+
+      <div class="modal-actions"><button class="btn-cancel" data-modal="registerModal">取消</button><button class="btn-submit" id="doRegisterBtn">注册</button></div>
+      <div class="modal-switch">已有账号？<a id="switchToLogin">去登录</a></div>
+    </div>
+  </div>
+
+  <!-- 上传模态框 -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal">
+      <h2>上传新字 <button class="modal-close" data-modal="uploadModal">×</button></h2>
+      
+      <div class="upload-mode-tabs">
+        <div class="upload-mode-tab active" id="tabText">文字模式 (有 Unicode)</div>
+        <div class="upload-mode-tab" id="tabImage">图片模式 (无 Unicode)</div>
+      </div>
+
+      <div class="form-group">
+        <label>所属分类</label>
+        <select id="uploadCategory">
+          <option value="nom">喃字 (Nôm)</option>
+          <option value="zhuang">古壮字 (Sawndip)</option>
+          <option value="bouyei">布依字</option>
+          <option value="other">其他/自造字</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>查找 ID (输入这个即可搜到)</label>
+        <input type="text" id="uploadId" placeholder="如：𪹣 或者 编号 img_2">
+      </div>
+
+      <div id="textModeGroup">
+        <div class="form-group">
+          <label>Unicode 编码 (可选)</label>
+          <input type="text" id="uploadUnicode" placeholder="如 U+2AE63">
+        </div>
+      </div>
+
+      <div id="imageModeGroup" style="display: none;">
+        <div class="form-group">
+          <label>选择本地图片文件</label>
+          <div class="file-upload-wrapper">
+            <div class="file-upload-icon">📁</div>
+            <div class="file-upload-text" id="fileNameDisplay">点击此处从相册或文件中选择图片</div>
+            <input type="file" id="uploadImageFile" accept="image/*">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group"><label>部首 (可选)</label><input type="text" id="uploadRadical"></div>
+      <div class="form-group"><label>笔画数 (可选)</label><input type="text" id="uploadStrokes"></div>
+      <div class="form-group"><label>读音 (可选)</label><input type="text" id="uploadReading"></div>
+      <div class="form-group"><label>释义 (每行一条)</label><textarea id="uploadDefinition" rows="3"></textarea></div>
+      <div class="form-group"><label>备注 (可选)</label><textarea id="uploadNote" rows="2"></textarea></div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" data-modal="uploadModal">取消</button>
+        <button class="btn-submit" id="doUploadBtn">确认上传</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const STORAGE_KEY = 'multi_lang_chars_data';
+    const USER_KEY = 'nom_users';
+    const SESSION_KEY = 'nom_session';
+
+    const defaultData = {
+      '𪹣': { id: '𪹣', type: 'text', category: 'nom', unicode: 'U+2AE63', radical: '火', strokes: '15', reading: 'hơ', definition: ['把物品放在热源附近烘干、烤干或取暖。', '喃字字典例句：「𪹣𩈘𧜗」（hơ mặt áo）—— 烘干衣服。'], note: '左右结构，左“火”右“虚”。' },
+      '𢗝': { id: '𢗝', type: 'text', category: 'zhuang', unicode: 'U+2B1DD', radical: '心 (忄)', strokes: '7', reading: 'hổ', definition: ['越南喃字读音为 hổ。', '部分字典视为“怟”的异体字。'], note: '左右结构，部首为“心”。' },
+      '𧣕': { id: '𧣕', type: 'text', category: 'bouyei', unicode: 'U+278D5', radical: '角', strokes: '12', reading: 'tù', definition: ['常用于指代“吹号角”的动作。'], note: '左右结构，部首为“角”。' },
+      'img_1': { id: 'img_1', type: 'image', category: 'other', imageUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMzMyIiBzdHJva2Utd2lkdGg9IjIiLz48dGV4dCB4PSI1MCIgeT0iNTUiIGZvbnQtc2l6ZT0iNDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzZXJpZiI+5rCRPC90ZXh0Pjwvc3ZnPg==", unicode: '无', radical: '未知', strokes: '-', reading: 'N/A', definition: ['这是一个无 Unicode 编码的民间自造字示例，使用图片展示。'], note: '民间手抄本发掘。' }
+    };
+
+    function getStoredData() {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultData));
+        return { ...defaultData };
+      }
+      return JSON.parse(stored);
+    }
+
+    let charData = getStoredData();
+    const resultCard = document.getElementById('resultCard');
+    const charInput = document.getElementById('charInput');
+    const toast = document.getElementById('toast');
+
+    const categories = {
+      'nom': { name: '喃字', class: 'tag-nom' },
+      'zhuang': { name: '古壮字', class: 'tag-zhuang' },
+      'bouyei': { name: '布依字', class: 'tag-bouyei' },
+      'other': { name: '其他字', class: 'tag-other' }
+    };
+
+    const iconEye = `<svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`;
+    const iconEyeClosed = `<svg viewBox="0 0 24 24"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>`;
+
+    function renderResult(queryId) {
+      resultCard.innerHTML = ''; 
+      const data = charData[queryId];
+      
+      if (!data) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-state';
+        emptyDiv.innerHTML = `<div style="font-size:3rem;">🔍</div><div>未收录「${queryId}」</div>`;
+        resultCard.appendChild(emptyDiv);
+        return;
+      }
+
+      const header = document.createElement('div'); header.className = 'char-header';
+      
+      if (data.type === 'image') {
+        const imgNode = document.createElement('img');
+        imgNode.className = 'big-image'; imgNode.src = data.imageUrl; imgNode.alt = data.id;
+        header.appendChild(imgNode);
+      } else {
+        const bigChar = document.createElement('div'); bigChar.className = 'big-char'; bigChar.textContent = data.id;
+        header.appendChild(bigChar);
+      }
+      
+      const meta = document.createElement('div'); meta.className = 'char-meta';
+      
+      if (data.category && categories[data.category]) {
+        const catInfo = categories[data.category];
+        const catItem = document.createElement('div'); catItem.className = `meta-item ${catInfo.class}`;
+        catItem.innerHTML = `<span class="meta-label" style="color:inherit;">分类</span><span class="meta-value">${catInfo.name}</span>`;
+        meta.appendChild(catItem);
+      }
+
+      const addMeta = (label, value) => {
+        if (!value) return;
+        const item = document.createElement('div'); item.className = 'meta-item';
+        const l = document.createElement('span'); l.className = 'meta-label'; l.textContent = label;
+        const v = document.createElement('span'); v.className = 'meta-value'; v.textContent = value;
+        item.append(l, v); meta.appendChild(item);
+      };
+      
+      addMeta('Unicode', data.unicode); addMeta('部首', data.radical);
+      addMeta('笔画', data.strokes); addMeta('读音', data.reading);
+      header.appendChild(meta); resultCard.appendChild(header);
+
+      const defDiv = document.createElement('div'); defDiv.className = 'definition';
+      const defTitle = document.createElement('div'); defTitle.className = 'def-title'; defTitle.textContent = '释义与用法';
+      const defText = document.createElement('div'); defText.className = 'def-text';
+      
+      if (data.definition && data.definition.length > 0) {
+        data.definition.forEach(para => {
+          const p = document.createElement('p'); p.textContent = para; defText.appendChild(p);
+        });
+      }
+      defDiv.append(defTitle, defText); resultCard.appendChild(defDiv);
+
+      if (data.note) {
+        const noteDiv = document.createElement('div'); noteDiv.className = 'note'; noteDiv.textContent = `📌 ${data.note}`;
+        resultCard.appendChild(noteDiv);
+      }
+    }
+
+    function handleSearch(query) {
+      const trimmed = query.trim();
+      if (!trimmed) return;
+      const key = trimmed.length > 5 ? trimmed : Array.from(trimmed)[0];
+      charInput.value = key;
+      renderResult(key);
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', () => handleSearch(charInput.value));
+    charInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleSearch(charInput.value); });
+    document.querySelectorAll('.example-btn').forEach(btn => {
+      btn.addEventListener('click', () => { charInput.value = btn.getAttribute('data-char'); handleSearch(charInput.value); });
+    });
+
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    document.querySelectorAll('.modal-close, .btn-cancel').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.target.closest('.modal-overlay').classList.remove('active'); });
+    });
+
+    document.querySelectorAll('.eye-btn').forEach(btn => {
+      btn.innerHTML = iconEye;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = btn.getAttribute('data-target');
+        const input = document.getElementById(targetId);
+        
+        if (input.type === 'password') {
+          input.type = 'text';
+          btn.innerHTML = iconEyeClosed; 
+          btn.style.color = '#5f4e3c';
+        } else {
+          input.type = 'password';
+          btn.innerHTML = iconEye; 
+          btn.style.color = '#a99c8c';
+        }
+      });
+    });
+
+    document.getElementById('loginBtn').addEventListener('click', () => openModal('loginModal'));
+    document.getElementById('registerBtn').addEventListener('click', () => openModal('registerModal'));
+    
+    document.getElementById('switchToRegister').addEventListener('click', () => { closeModal('loginModal'); openModal('registerModal'); });
+    document.getElementById('switchToLogin').addEventListener('click', () => { closeModal('registerModal'); openModal('loginModal'); });
+
+    document.getElementById('doRegisterBtn').addEventListener('click', () => {
+      const user = document.getElementById('registerUsername').value.trim();
+      const pwd = document.getElementById('registerPassword').value.trim();
+      const pwdConfirm = document.getElementById('registerPasswordConfirm').value.trim();
+      
+      if (!user || !pwd) return showToast('用户名和密码不能为空');
+      if (pwd !== pwdConfirm) return showToast('两次密码输入不一致');
+      
+      let users = JSON.parse(localStorage.getItem(USER_KEY) || '{}');
+      if (users[user]) return showToast('该用户名已被注册');
+      
+      users[user] = pwd;
+      localStorage.setItem(USER_KEY, JSON.stringify(users));
+      
+      showToast('注册成功！请登录');
+      closeModal('registerModal');
+      document.getElementById('loginUsername').value = user;
+      openModal('loginModal');
+    });
+
+    document.getElementById('doLoginBtn').addEventListener('click', () => {
+      const user = document.getElementById('loginUsername').value.trim();
+      const pwd = document.getElementById('loginPassword').value.trim();
+      
+      let users = JSON.parse(localStorage.getItem(USER_KEY) || '{}');
+      if (!users[user] || users[user] !== pwd) {
+        return showToast('用户名或密码错误');
+      }
+      
+      localStorage.setItem(SESSION_KEY, user);
+      updateUserUI();
+      closeModal('loginModal');
+      showToast('登录成功');
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem(SESSION_KEY);
+      updateUserUI();
+      showToast('已退出登录');
+    });
+
+    function updateUserUI() {
+      const user = localStorage.getItem(SESSION_KEY);
+      if (user) {
+        document.getElementById('userInfo').style.display = 'inline';
+        document.getElementById('userInfo').textContent = `👤 ${user}`;
+        document.getElementById('loginBtn').style.display = 'none';
+        document.getElementById('registerBtn').style.display = 'none';
+        document.getElementById('logoutBtn').style.display = 'inline';
+        document.getElementById('uploadBtn').style.display = 'inline';
+      } else {
+        document.getElementById('userInfo').style.display = 'none';
+        document.getElementById('loginBtn').style.display = 'inline';
+        document.getElementById('registerBtn').style.display = 'inline';
+        document.getElementById('logoutBtn').style.display = 'none';
+        document.getElementById('uploadBtn').style.display = 'none';
+      }
+    }
+
+    let currentUploadMode = 'text';
+    let uploadedImageBase64 = '';
+
+    document.getElementById('tabText').addEventListener('click', () => {
+      currentUploadMode = 'text';
+      document.getElementById('tabText').classList.add('active');
+      document.getElementById('tabImage').classList.remove('active');
+      document.getElementById('textModeGroup').style.display = 'block';
+      document.getElementById('imageModeGroup').style.display = 'none';
+    });
+
+    document.getElementById('tabImage').addEventListener('click', () => {
+      currentUploadMode = 'image';
+      document.getElementById('tabImage').classList.add('active');
+      document.getElementById('tabText').classList.remove('active');
+      document.getElementById('textModeGroup').style.display = 'none';
+      document.getElementById('imageModeGroup').style.display = 'block';
+    });
+
+    document.getElementById('uploadImageFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      document.getElementById('fileNameDisplay').textContent = `已选择: ${file.name}`;
+      document.getElementById('fileNameDisplay').style.color = '#2e6b2e';
+      
+      const reader = new FileReader();
+      reader.onload = function(event) { 
+        uploadedImageBase64 = event.target.result; 
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('uploadBtn').addEventListener('click', () => {
+      if(!localStorage.getItem(SESSION_KEY)) return showToast('请先登录');
+      openModal('uploadModal');
+    });
+
+    document.getElementById('doUploadBtn').addEventListener('click', () => {
+      const id = document.getElementById('uploadId').value.trim();
+      const category = document.getElementById('uploadCategory').value;
+      if (!id) return showToast('请输入查找 ID');
+      
+      if (charData[id]) return showToast(`「${id}」已存在！`);
+      
+      const defArr = document.getElementById('uploadDefinition').value.split('\n').filter(s => s.trim());
+      
+      if (currentUploadMode === 'text') {
+        charData[id] = {
+          id: id, type: 'text', category: category,
+          unicode: document.getElementById('uploadUnicode').value.trim(),
+          radical: document.getElementById('uploadRadical').value.trim(),
+          strokes: document.getElementById('uploadStrokes').value.trim(),
+          reading: document.getElementById('uploadReading').value.trim(),
+          definition: defArr, note: document.getElementById('uploadNote').value.trim()
+        };
+      } else {
+        if (!uploadedImageBase64) return showToast('请选择一张图片');
+        charData[id] = {
+          id: id, type: 'image', category: category, imageUrl: uploadedImageBase64,
+          unicode: '无', radical: document.getElementById('uploadRadical').value.trim(),
+          strokes: document.getElementById('uploadStrokes').value.trim(),
+          reading: document.getElementById('uploadReading').value.trim(),
+          definition: defArr, note: document.getElementById('uploadNote').value.trim()
+        };
+      }
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(charData));
+      showToast('上传成功！');
+      
+      closeModal('uploadModal');
+      document.getElementById('uploadId').value = '';
+      document.getElementById('uploadImageFile').value = '';
+      document.getElementById('fileNameDisplay').textContent = '点击此处从相册或文件中选择图片';
+      document.getElementById('fileNameDisplay').style.color = '#8c7b68';
+      uploadedImageBase64 = '';
+      
+      charInput.value = id;
+      renderResult(id);
+    });
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    updateUserUI();
+    renderResult('𪹣');
+    charInput.value = '𪹣';
+  </script>
+</body>
+</html>
