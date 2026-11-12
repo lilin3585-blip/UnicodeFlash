@@ -3,65 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>赛博字体工厂 - 至高完美版</title>
+    <title>赛博字体工厂 - 纯手工无敌版</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
-    <!-- 🌟 引入 Virtua 虚拟列表库 -->
-    <script src="https://cdn.jsdelivr.net/npm/preact@10/dist/preact.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/virtua@0.38/dist/virtua.umd.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         html, body { height: 100vh; width: 100vw; margin: 0; padding: 0; overflow: hidden; background-color: #121212; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
         
+        /* 整体布局：左右分栏，绝对不溢出 */
         .app-layout { display: flex; height: 100vh; width: 100vw; }
         
-        /* 左侧面板 */
+        /* 左侧面板：固定宽度，Flex纵向排列 */
         .left-panel { width: 280px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; padding: 15px; gap: 12px; flex-shrink: 0; }
         .font-name-input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; font-size: 14px; }
         
         .import-btn { display: block; width: 100%; padding: 10px; background: #5856D6; color: white; text-align: center; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
         .import-btn input[type="file"] { display: none; }
 
-        .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold;}
+        .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold; flex-shrink: 0;}
 
-        /* 🌟 完美网格布局：彻底解决溢出 */
-        .char-panel-wrapper { flex: 1; position: relative; overflow: hidden; }
-        .virtua-scroller { height: 100%; overflow-y: auto; }
-        
-        /* 核心修复：使用 CSS Grid 绝对三等分，严丝合缝 */
-        .virtua-grid-container {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
-            padding-bottom: 20px;
+        /* 🌟 滚动容器：核心逻辑在这，给固定高度 */
+        .char-panel-wrapper { 
+            flex: 1; /* 占据剩余全部高度 */
+            overflow-y: auto; /* 允许内部滚动 */
+            position: relative; 
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #151515;
         }
         
+        /* 内部网格容器：绝对定位撑开滚动条 */
+        .virtua-grid-container {
+            position: relative;
+            width: 100%;
+        }
+        
+        /* 单个字格子：绝对定位，防止排版抖动 */
         .char-btn { 
+            position: absolute;
+            width: calc((100% - 16px) / 3); /* 严丝合缝三列 */
+            height: 65px;
             background: #333; color: white; border: 2px solid #444; border-radius: 6px; 
             cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none; 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            height: 65px; font-family: inherit;
-            overflow: hidden; /* 防止内容撑破 */
+            font-family: inherit;
         }
         .char-btn.active { background: #007AFF; border-color: #007AFF; }
         .char-btn.done { background: #34C759; border-color: #34C759; color: black; }
         .char-btn .hex { font-size: 10px; opacity: 0.6; margin-top: 2px; font-family: monospace; }
 
-        /* 右侧画板区 */
-        .right-panel { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 20px; background: #121212; min-width: 0; }
-        .svg-wrapper { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1/1; background-color: white; border: 2px solid #444; border-radius: 8px; overflow: hidden; }
+        /* 右侧面板 */
+        .right-panel { 
+            flex: 1; height: 100%; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; /* 垂直水平居中 */
+            padding: 20px; gap: 20px; background: #121212; min-width: 0; 
+        }
         
-        /* 描红底稿：绝对居中，无法溢出 */
+        /* 画板容器：宽度自适应，保持正方形 */
+        .svg-wrapper { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1/1; background-color: white; border: 2px solid #444; border-radius: 8px; overflow: hidden; flex-shrink: 1;}
+        
+        /* 描红底稿 */
         .ghost-text-svg { font-size: 800px; fill: rgba(0, 0, 0, 0.08); font-weight: normal; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
         
-        .svg-board { width: 100%; height: 100%; touch-action: none; position: relative; z-index: 10; }
+        .svg-board { width: 100%; height: 100%; touch-action: none; position: absolute; top: 0; left: 0; z-index: 10; }
         .drawn-stroke { fill: none; stroke: #000; stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; pointer-events: auto; cursor: pointer; }
         .drawn-stroke:hover { stroke: #FF3B30; }
 
-        .actions { display: flex; gap: 10px; width: 100%; max-width: 600px; flex-wrap: wrap; }
+        .actions { display: flex; gap: 10px; width: 100%; max-width: 600px; flex-wrap: wrap; flex-shrink: 0;}
         button.action { padding: 15px; font-size: 15px; border: none; border-radius: 8px; font-weight: bold; flex: 1; cursor: pointer; transition: 0.2s; min-width: 120px;}
         .btn-save { background-color: #FF9500; color: black; }
         .btn-export { background-color: #FF3B30; color: white; }
-        #status { color: #00ff00; font-size: 15px; text-align: center; height: 24px; font-weight: bold;}
+        #status { color: #00ff00; font-size: 15px; text-align: center; height: 24px; font-weight: bold; flex-shrink: 0;}
     </style>
 </head>
 <body>
@@ -76,20 +87,17 @@
         </label>
 
         <div class="page-info-bar">
-            <span id="pageInfo">数据流准备就绪</span>
+            <span id="pageInfo">数据流加载中...</span>
         </div>
         
-        <!-- 虚拟滚动容器 -->
-        <div class="char-panel-wrapper">
-            <div class="virtua-scroller" id="scrollContainer">
-                <!-- 库会自动在这个容器里生成网格 -->
-                <div id="virtuaList"></div>
-            </div>
+        <!-- 滚动区 -->
+        <div class="char-panel-wrapper" id="scrollWrapper">
+            <div class="virtua-grid-container" id="virtuaList"></div>
         </div>
     </div>
 
     <div class="right-panel">
-        <div id="status">准备就绪。正在渲染十全汉字...</div>
+        <div id="status">准备就绪。</div>
         
         <div class="svg-wrapper">
             <svg id="svgBoard" class="svg-board" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg">
@@ -111,7 +119,7 @@
     const ghostText = document.getElementById('ghostText');
     const pageInfo = document.getElementById('pageInfo');
     const statusText = document.getElementById('status');
-    const scrollContainer = document.getElementById('scrollContainer');
+    const scrollWrapper = document.getElementById('scrollWrapper');
     const virtuaList = document.getElementById('virtuaList');
 
     let isDrawing = false;
@@ -131,8 +139,11 @@
         { start: 0x323B0, end: 0x3347F }
     ];
 
+    const ITEM_HEIGHT = 73; // 格子高度(65) + 上下间距(8)
+    const COLS = 3; // 三列
+
     function init() {
-        // 瞬间生成数据
+        // 生成数据
         unicodeBlocks.forEach(block => {
             for (let code = block.start; code <= block.end; code++) {
                 if (code >= 0xD800 && code <= 0xDFFF) continue; 
@@ -144,52 +155,64 @@
         });
 
         pageInfo.innerText = `完美加载: ${targetChars.length} 字`;
-        statusText.innerText = "丝滑渲染已开启。";
-
-        // 🌟 使用 Virtua 官方 API 进行网格渲染
-        const { Virtualizer } = window.Virtua;
         
-        const virtualizer = new Virtua.Virtualizer({
-            count: targetChars.length,
-            itemHeight: 73, // 65 + 8
-            overscan: 5,
-            scrollRef: scrollContainer,
-            children: (start, end) => {
-                // Virtua 会要求返回一个数组或 Fragment
-                const items = [];
-                // 我们把它装在 Grid 容器里
-                const gridContainer = document.createElement('div');
-                gridContainer.className = 'virtua-grid-container';
-                // 挂载到 virtuaList 里
-                virtuaList.innerHTML = '';
-                virtuaList.appendChild(gridContainer);
+        // 撑开滚动区高度 (总行数 * 行高)
+        const totalRows = Math.ceil(targetChars.length / COLS);
+        virtuaList.style.height = `${totalRows * ITEM_HEIGHT}px`;
 
-                for (let i = start; i < end; i++) {
-                    const item = targetChars[i];
-                    const btn = document.createElement('div');
-                    btn.className = 'char-btn';
-                    btn.id = `btn-${item.hex}`;
-                    if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) btn.classList.add('done');
-                    if (i === currentCharIndex) btn.classList.add('active');
-                    
-                    const charSpan = document.createElement('span');
-                    charSpan.textContent = item.char;
-                    const hexSpan = document.createElement('span');
-                    hexSpan.className = 'hex';
-                    hexSpan.textContent = item.hex;
-
-                    btn.appendChild(charSpan);
-                    btn.appendChild(hexSpan);
-                    btn.onclick = () => selectChar(i);
-                    gridContainer.appendChild(btn);
-                }
-                return []; // 已经手动挂载，这里返回空数组防止库报错
-            }
-        });
-
-        // 渲染
-        virtualizer.render();
+        // 初次渲染
+        renderVisibleItems(0);
         selectChar(0);
+    }
+
+    // 滚动事件（用 requestAnimationFrame 防抖，确保不闪烁）
+    let isRendering = false;
+    scrollWrapper.addEventListener('scroll', () => {
+        if (isRendering) return;
+        isRendering = true;
+        requestAnimationFrame(() => {
+            const startRow = Math.floor(scrollWrapper.scrollTop / ITEM_HEIGHT);
+            const startIndex = Math.max(0, startRow * COLS);
+            renderVisibleItems(startIndex);
+            isRendering = false;
+        });
+    });
+
+    // 渲染可见的 60 个格子（绝对定位，不乱跳）
+    function renderVisibleItems(startIndex) {
+        virtuaList.innerHTML = ''; // 清空旧格子
+        const fragment = document.createDocumentFragment();
+        const renderCount = 60; // 渲染 60 个
+
+        for (let i = 0; i < renderCount; i++) {
+            const index = startIndex + i;
+            if (index >= targetChars.length) break;
+
+            const item = targetChars[index];
+            const btn = document.createElement('div');
+            btn.className = 'char-btn';
+            if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) btn.classList.add('done');
+            if (index === currentCharIndex) btn.classList.add('active');
+            
+            // 计算绝对定位
+            const row = Math.floor(index / COLS);
+            const col = index % COLS;
+            btn.style.top = `${row * ITEM_HEIGHT}px`;
+            // 这里的 left 严格三等分，绝不出界
+            btn.style.left = `calc(${col * 33.333}% + ${col * 4}px)`; 
+
+            const charSpan = document.createElement('span');
+            charSpan.textContent = item.char;
+            const hexSpan = document.createElement('span');
+            hexSpan.className = 'hex';
+            hexSpan.textContent = item.hex;
+
+            btn.appendChild(charSpan);
+            btn.appendChild(hexSpan);
+            btn.onclick = () => selectChar(index);
+            fragment.appendChild(btn);
+        }
+        virtuaList.appendChild(fragment);
     }
 
     // 导入字体
@@ -206,28 +229,20 @@
             loadedFonts.push('ImportedFont_' + i);
         }
 
-        // 应用字体
         virtuaList.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
         ghostText.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
+        
+        // 刷新一次视图
+        const startRow = Math.floor(scrollWrapper.scrollTop / ITEM_HEIGHT);
+        renderVisibleItems(Math.max(0, startRow * COLS));
         statusText.innerText = `✅ 字体导入成功！`;
     });
 
     function selectChar(index) {
-        if (targetChars[currentCharIndex]) {
-            const oldBtn = document.getElementById(`btn-${targetChars[currentCharIndex].hex}`);
-            if (oldBtn) oldBtn.classList.remove('active');
-        }
-
         currentCharIndex = index;
         const hex = targetChars[index].hex;
         const char = targetChars[index].char;
         
-        const newBtn = document.getElementById(`btn-${hex}`);
-        if (newBtn) {
-            newBtn.classList.add('active');
-            newBtn.scrollIntoView({ behavior: 'auto', block: 'nearest' }); 
-        }
-
         ghostText.textContent = char;
         pageInfo.innerText = `当前: U+${hex}`;
 
@@ -239,6 +254,13 @@
         } else {
             statusText.innerText = `正在书写 U+${hex}`;
         }
+        
+        const btns = virtuaList.querySelectorAll('.char-btn');
+        btns.forEach(b => {
+            const bHex = b.querySelector('.hex').textContent;
+            if (bHex === hex) b.classList.add('active');
+            else b.classList.remove('active');
+        });
     }
 
     function clearSVG() {
@@ -265,11 +287,14 @@
         const paths = Array.from(svgBoard.querySelectorAll('.drawn-stroke')).map(p => p.getAttribute('d'));
         glyphDatabase[hex] = paths;
         
-        const currentBtn = document.getElementById(`btn-${hex}`);
-        if (currentBtn) {
-            if (paths.length > 0) currentBtn.classList.add('done');
-            else currentBtn.classList.remove('done');
-        }
+        const btns = virtuaList.querySelectorAll('.char-btn');
+        btns.forEach(b => {
+            const bHex = b.querySelector('.hex').textContent;
+            if (bHex === hex) {
+                if (paths.length > 0) b.classList.add('done');
+                else b.classList.remove('done');
+            }
+        });
     }
 
     function getPos(e) {
@@ -323,7 +348,6 @@
         updateCurrentCharData();
     }
 
-    // 导出功能
     function exportFullFont() {
         const customName = document.getElementById('fontName').value || "MegaFont";
         let hasData = false;
@@ -367,7 +391,7 @@
         statusText.innerText = `导出成功！`;
     }
 
-    // 启动！
+    // 启动
     init();
 </script>
 </body>
