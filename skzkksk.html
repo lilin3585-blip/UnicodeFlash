@@ -4,66 +4,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>赛博字体工厂 - 纯手工无敌版</title>
-    <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         html, body { height: 100vh; width: 100vw; margin: 0; padding: 0; overflow: hidden; background-color: #121212; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-        
-        /* 整体布局：左右分栏，绝对不溢出 */
+
         .app-layout { display: flex; height: 100vh; width: 100vw; }
-        
-        /* 左侧面板：固定宽度，Flex纵向排列 */
+
         .left-panel { width: 280px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; padding: 15px; gap: 12px; flex-shrink: 0; }
         .font-name-input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; font-size: 14px; }
-        
+
         .import-btn { display: block; width: 100%; padding: 10px; background: #5856D6; color: white; text-align: center; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
         .import-btn input[type="file"] { display: none; }
 
         .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold; flex-shrink: 0;}
 
-        /* 🌟 滚动容器：核心逻辑在这，给固定高度 */
-        .char-panel-wrapper { 
-            flex: 1; /* 占据剩余全部高度 */
-            overflow-y: auto; /* 允许内部滚动 */
-            position: relative; 
+        .char-panel-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            position: relative;
             border: 1px solid #333;
             border-radius: 6px;
             background: #151515;
         }
-        
-        /* 内部网格容器：绝对定位撑开滚动条 */
+
         .virtua-grid-container {
             position: relative;
             width: 100%;
         }
-        
-        /* 单个字格子：绝对定位，防止排版抖动 */
-        .char-btn { 
+
+        .char-btn {
             position: absolute;
-            width: calc((100% - 16px) / 3); /* 严丝合缝三列 */
+            width: calc((100% - 16px) / 3);
             height: 65px;
-            background: #333; color: white; border: 2px solid #444; border-radius: 6px; 
-            cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none; 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            background: #333; color: white; border: 2px solid #444; border-radius: 6px;
+            cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
             font-family: inherit;
         }
         .char-btn.active { background: #007AFF; border-color: #007AFF; }
         .char-btn.done { background: #34C759; border-color: #34C759; color: black; }
         .char-btn .hex { font-size: 10px; opacity: 0.6; margin-top: 2px; font-family: monospace; }
 
-        /* 右侧面板 */
-        .right-panel { 
-            flex: 1; height: 100%; display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; /* 垂直水平居中 */
-            padding: 20px; gap: 20px; background: #121212; min-width: 0; 
+        .right-panel {
+            flex: 1; height: 100%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 20px; gap: 20px; background: #121212; min-width: 0;
         }
-        
-        /* 画板容器：宽度自适应，保持正方形 */
+
         .svg-wrapper { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1/1; background-color: white; border: 2px solid #444; border-radius: 8px; overflow: hidden; flex-shrink: 1;}
-        
-        /* 描红底稿 */
+
         .ghost-text-svg { font-size: 800px; fill: rgba(0, 0, 0, 0.08); font-weight: normal; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-        
+
         .svg-board { width: 100%; height: 100%; touch-action: none; position: absolute; top: 0; left: 0; z-index: 10; }
         .drawn-stroke { fill: none; stroke: #000; stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; pointer-events: auto; cursor: pointer; }
         .drawn-stroke:hover { stroke: #FF3B30; }
@@ -72,6 +64,7 @@
         button.action { padding: 15px; font-size: 15px; border: none; border-radius: 8px; font-weight: bold; flex: 1; cursor: pointer; transition: 0.2s; min-width: 120px;}
         .btn-save { background-color: #FF9500; color: black; }
         .btn-export { background-color: #FF3B30; color: white; }
+        .btn-auto { background-color: #5856D6; color: white; }
         #status { color: #00ff00; font-size: 15px; text-align: center; height: 24px; font-weight: bold; flex-shrink: 0;}
     </style>
 </head>
@@ -80,7 +73,7 @@
 <div class="app-layout">
     <div class="left-panel">
         <input type="text" id="fontName" class="font-name-input" value="MegaFont_Full" placeholder="导出字体名称">
-        
+
         <label class="import-btn">
             📁 批量导入回退字体
             <input type="file" id="fontUpload" accept=".ttf, .otf" multiple>
@@ -89,8 +82,7 @@
         <div class="page-info-bar">
             <span id="pageInfo">数据流加载中...</span>
         </div>
-        
-        <!-- 滚动区 -->
+
         <div class="char-panel-wrapper" id="scrollWrapper">
             <div class="virtua-grid-container" id="virtuaList"></div>
         </div>
@@ -98,7 +90,7 @@
 
     <div class="right-panel">
         <div id="status">准备就绪。</div>
-        
+
         <div class="svg-wrapper">
             <svg id="svgBoard" class="svg-board" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg">
                 <path d="M 500 0 L 500 1000 M 0 500 L 1000 500 M 250 0 L 250 1000 M 750 0 L 750 1000 M 0 250 L 1000 250 M 0 750 L 1000 750" stroke="#eee" stroke-width="2" pointer-events="none"/>
@@ -108,6 +100,7 @@
         </div>
 
         <div class="actions">
+            <button class="action btn-auto" onclick="autoGenerateCurrentChar()">⚡ 一键生成此字</button>
             <button class="action btn-save" onclick="saveCurrentChar()">💾 保存此字</button>
             <button class="action btn-export" onclick="exportFullFont()">🚀 导出 OTF</button>
         </div>
@@ -123,12 +116,13 @@
     const virtuaList = document.getElementById('virtuaList');
 
     let isDrawing = false;
-    let targetChars = []; 
-    let currentCharIndex = 0; 
-    let glyphDatabase = {}; 
-    let currentPathString = ""; 
+    let targetChars = [];
+    let currentCharIndex = 0;
+    let glyphDatabase = {};
+    let currentPathString = "";
     let currentPathEl = null;
     let loadedFonts = [];
+    let parsedFonts = []; // 存 opentype 解析后的字体，用于自动生成字形
 
     const unicodeBlocks = [
         { start: 0x4E00, end: 0x9FFF }, { start: 0x3400, end: 0x4DBF },
@@ -139,14 +133,13 @@
         { start: 0x323B0, end: 0x3347F }
     ];
 
-    const ITEM_HEIGHT = 73; // 格子高度(65) + 上下间距(8)
-    const COLS = 3; // 三列
+    const ITEM_HEIGHT = 73;
+    const COLS = 3;
 
     function init() {
-        // 生成数据
         unicodeBlocks.forEach(block => {
             for (let code = block.start; code <= block.end; code++) {
-                if (code >= 0xD800 && code <= 0xDFFF) continue; 
+                if (code >= 0xD800 && code <= 0xDFFF) continue;
                 const hex = code.toString(16).toUpperCase().padStart(4, '0');
                 let char = "";
                 try { char = String.fromCodePoint(code); } catch(e) { char = "?"; }
@@ -155,17 +148,14 @@
         });
 
         pageInfo.innerText = `完美加载: ${targetChars.length} 字`;
-        
-        // 撑开滚动区高度 (总行数 * 行高)
+
         const totalRows = Math.ceil(targetChars.length / COLS);
         virtuaList.style.height = `${totalRows * ITEM_HEIGHT}px`;
 
-        // 初次渲染
         renderVisibleItems(0);
         selectChar(0);
     }
 
-    // 滚动事件（用 requestAnimationFrame 防抖，确保不闪烁）
     let isRendering = false;
     scrollWrapper.addEventListener('scroll', () => {
         if (isRendering) return;
@@ -178,11 +168,10 @@
         });
     });
 
-    // 渲染可见的 60 个格子（绝对定位，不乱跳）
     function renderVisibleItems(startIndex) {
-        virtuaList.innerHTML = ''; // 清空旧格子
+        virtuaList.innerHTML = '';
         const fragment = document.createDocumentFragment();
-        const renderCount = 60; // 渲染 60 个
+        const renderCount = 60;
 
         for (let i = 0; i < renderCount; i++) {
             const index = startIndex + i;
@@ -193,13 +182,11 @@
             btn.className = 'char-btn';
             if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) btn.classList.add('done');
             if (index === currentCharIndex) btn.classList.add('active');
-            
-            // 计算绝对定位
+
             const row = Math.floor(index / COLS);
             const col = index % COLS;
             btn.style.top = `${row * ITEM_HEIGHT}px`;
-            // 这里的 left 严格三等分，绝不出界
-            btn.style.left = `calc(${col * 33.333}% + ${col * 4}px)`; 
+            btn.style.left = `calc(${col * 33.333}% + ${col * 4}px)`;
 
             const charSpan = document.createElement('span');
             charSpan.textContent = item.char;
@@ -215,7 +202,6 @@
         virtuaList.appendChild(fragment);
     }
 
-    // 导入字体
     document.getElementById('fontUpload').addEventListener('change', async function(e) {
         const files = e.target.files;
         if (!files || files.length === 0) return;
@@ -227,22 +213,29 @@
             await fontFace.load();
             document.fonts.add(fontFace);
             loadedFonts.push('ImportedFont_' + i);
+
+            // 同时用 opentype 解析一份，供自动生成字形用
+            try {
+                const parsed = opentype.parse(buffer.slice(0));
+                parsedFonts.push(parsed);
+            } catch (err) {
+                console.warn('opentype 解析失败（仅影响自动生成）:', err);
+            }
         }
 
         virtuaList.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
         ghostText.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
-        
-        // 刷新一次视图
+
         const startRow = Math.floor(scrollWrapper.scrollTop / ITEM_HEIGHT);
         renderVisibleItems(Math.max(0, startRow * COLS));
-        statusText.innerText = `✅ 字体导入成功！`;
+        statusText.innerText = `✅ 字体导入成功！可点「⚡ 一键生成此字」自动生成字形`;
     });
 
     function selectChar(index) {
         currentCharIndex = index;
         const hex = targetChars[index].hex;
         const char = targetChars[index].char;
-        
+
         ghostText.textContent = char;
         pageInfo.innerText = `当前: U+${hex}`;
 
@@ -254,7 +247,7 @@
         } else {
             statusText.innerText = `正在书写 U+${hex}`;
         }
-        
+
         const btns = virtuaList.querySelectorAll('.char-btn');
         btns.forEach(b => {
             const bHex = b.querySelector('.hex').textContent;
@@ -273,9 +266,9 @@
         pathEl.setAttribute("d", pathData);
         pathEl.setAttribute("class", "drawn-stroke");
         pathEl.onclick = (e) => {
-            e.stopPropagation(); 
-            pathEl.remove(); 
-            updateCurrentCharData(); 
+            e.stopPropagation();
+            pathEl.remove();
+            updateCurrentCharData();
         };
         svgBoard.appendChild(pathEl);
         return pathEl;
@@ -286,7 +279,7 @@
         const hex = targetChars[currentCharIndex].hex;
         const paths = Array.from(svgBoard.querySelectorAll('.drawn-stroke')).map(p => p.getAttribute('d'));
         glyphDatabase[hex] = paths;
-        
+
         const btns = virtuaList.querySelectorAll('.char-btn');
         btns.forEach(b => {
             const bHex = b.querySelector('.hex').textContent;
@@ -306,15 +299,15 @@
 
     function startDrawing(e) {
         if (targetChars.length === 0) return;
-        e.preventDefault(); 
-        isDrawing = true; 
+        e.preventDefault();
+        isDrawing = true;
         const pos = getPos(e);
         currentPathString = `M ${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
         currentPathEl = createSVGPath(currentPathString);
     }
 
     function draw(e) {
-        if (!isDrawing || !currentPathEl) return; 
+        if (!isDrawing || !currentPathEl) return;
         e.preventDefault();
         const pos = getPos(e);
         currentPathString += ` L ${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
@@ -322,8 +315,8 @@
     }
 
     function stopDrawing(e) {
-        if (!isDrawing) return; 
-        e.preventDefault(); 
+        if (!isDrawing) return;
+        e.preventDefault();
         isDrawing = false;
         if (currentPathString.length > 5 && targetChars.length > 0) {
             const hex = targetChars[currentCharIndex].hex;
@@ -335,12 +328,12 @@
         currentPathEl = null;
     }
 
-    svgBoard.addEventListener('mousedown', startDrawing); 
-    svgBoard.addEventListener('mousemove', draw); 
+    svgBoard.addEventListener('mousedown', startDrawing);
+    svgBoard.addEventListener('mousemove', draw);
     svgBoard.addEventListener('mouseup', stopDrawing);
-    svgBoard.addEventListener('mouseleave', stopDrawing); 
-    svgBoard.addEventListener('touchstart', startDrawing, {passive: false}); 
-    svgBoard.addEventListener('touchmove', draw, {passive: false}); 
+    svgBoard.addEventListener('mouseleave', stopDrawing);
+    svgBoard.addEventListener('touchstart', startDrawing, {passive: false});
+    svgBoard.addEventListener('touchmove', draw, {passive: false});
     svgBoard.addEventListener('touchend', stopDrawing, {passive: false});
 
     function saveCurrentChar() {
@@ -348,50 +341,180 @@
         updateCurrentCharData();
     }
 
+    /* ============ 新增：一键从导入字体生成当前字字形 ============ */
+    function autoGenerateCurrentChar() {
+        if (targetChars.length === 0) return;
+        if (parsedFonts.length === 0) {
+            alert('请先导入一个回退字体（TTF/OTF），才能自动生成字形。');
+            return;
+        }
+        const hex = targetChars[currentCharIndex].hex;
+        const char = targetChars[currentCharIndex].char;
+        const codePoint = parseInt(hex, 16);
+
+        // 从已解析字体里找这个字符的字形
+        let glyphPath = null;
+        for (const font of parsedFonts) {
+            try {
+                const glyph = font.charToGlyph(char);
+                if (glyph && glyph.path && glyph.path.commands.length > 0 && glyph.index !== 0) {
+                    glyphPath = glyph.path;
+                    break;
+                }
+            } catch (err) { /* 继续找下一个字体 */ }
+        }
+
+        if (!glyphPath) {
+            statusText.innerText = `❌ 导入字体里没有 U+${hex} 的字形`;
+            return;
+        }
+
+        // 把字体的路径坐标映射到画板的 0..1000 坐标
+        // 字体坐标 Y 向上，画板 Y 向下，需要翻转
+        const em = fontUnitsPerEm(parsedFonts.find(f => {
+            try { const g = f.charToGlyph(char); return g && g.index !== 0; } catch { return false; }
+        }) || parsedFonts[0]);
+        const scale = 1000 / em;
+        const ascender = 800; // 假设字体 ascender，常见值
+
+        const pathString = pathToSVGString(glyphPath, scale, ascender);
+
+        // 清掉手绘路径，换成自动生成的
+        clearSVG();
+        glyphDatabase[hex] = [pathString];
+        createSVGPath(pathString);
+        updateCurrentCharData();
+        statusText.innerText = `⚡ 已自动生成 U+${hex} 的字形`;
+    }
+
+    function fontUnitsPerEm(font) {
+        return font.unitsPerEm || 1000;
+    }
+
+    // 把 opentype.Path 转成 SVG path 字符串，并缩放到画板 0..1000
+    // 画板假设字形基线在 y=800（ascender=800），Y 轴向下
+    function pathToSVGString(path, scale, ascender) {
+        let d = '';
+        const tx = x => (x * scale).toFixed(1);
+        const ty = y => (ascender - y * scale).toFixed(1);
+        path.commands.forEach(cmd => {
+            if (cmd.type === 'M') d += `M ${tx(cmd.x)} ${ty(cmd.y)} `;
+            else if (cmd.type === 'L') d += `L ${tx(cmd.x)} ${ty(cmd.y)} `;
+            else if (cmd.type === 'Q') d += `Q ${tx(cmd.x1)} ${ty(cmd.y1)} ${tx(cmd.x)} ${ty(cmd.y)} `;
+            else if (cmd.type === 'C') d += `C ${tx(cmd.x1)} ${ty(cmd.y1)} ${tx(cmd.x2)} ${ty(cmd.y2)} ${tx(cmd.x)} ${ty(cmd.y)} `;
+            else if (cmd.type === 'Z') d += 'Z ';
+        });
+        return d.trim();
+    }
+
+    /* ============ 导出：只导出真正画过的字 ============ */
     function exportFullFont() {
         const customName = document.getElementById('fontName').value || "MegaFont";
-        let hasData = false;
         const notdefGlyph = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 1000, path: new opentype.Path() });
         let glyphs = [notdefGlyph];
+        let count = 0;
 
-        targetChars.forEach(item => {
-            const hex = item.hex;
-            const unicodeVal = parseInt(hex, 16);
+        // 只遍历 glyphDatabase 里真正有数据的字
+        Object.keys(glyphDatabase).forEach(hex => {
             const paths = glyphDatabase[hex];
-            
-            let combinedPathData = "";
-            if (paths && paths.length > 0) {
-                hasData = true;
-                combinedPathData = paths.join(" ");
-            } else {
-                combinedPathData = "M 0 0"; 
-            }
+            if (!paths || paths.length === 0) return;
+
+            const unicodeVal = parseInt(hex, 16);
+            const combinedPathData = paths.join(" ");
+
+            // 画板坐标 0..1000，Y 向下；字体坐标 Y 向上，基线在 ascender=800
+            // 需要把画板坐标转换回字体坐标
+            const fontPathData = svgBoardPathToFontPath(combinedPathData);
 
             const glyph = new opentype.Glyph({
-                name: `char_${hex}`, unicode: unicodeVal, advanceWidth: 1000, 
-                path: new opentype.Path(combinedPathData) 
+                name: `char_${hex}`, unicode: unicodeVal, advanceWidth: 1000,
+                path: new opentype.Path(fontPathData)
             });
             glyphs.push(glyph);
+            count++;
         });
 
-        if (!hasData) return alert("当前面板没画字！");
-        statusText.innerText = "正在编译...";
+        if (count === 0) return alert("当前面板没画字！");
+
+        statusText.innerText = `正在编译 ${count} 个字形...`;
 
         const font = new opentype.Font({
             familyName: customName, styleName: 'Regular', unitsPerEm: 1000, ascender: 800, descender: -200, glyphs: glyphs
         });
 
-        const buffer = font.toArrayBuffer();
-        const blob = new Blob([buffer], {type: "application/octet-stream"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = `${customName}.otf`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        
-        statusText.innerText = `导出成功！`;
+        try {
+            const buffer = font.toArrayBuffer();
+            const blob = new Blob([buffer], {type: "font/otf"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `${customName}.otf`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            statusText.innerText = `导出成功！共 ${count} 个字形`;
+        } catch (err) {
+            console.error(err);
+            statusText.innerText = `导出失败：${err.message}`;
+        }
     }
 
-    // 启动
+    // 画板坐标（0..1000，Y 向下）-> 字体坐标（Y 向上，基线 ascender=800）
+    function svgBoardPathToFontPath(boardPathData) {
+        // 用临时 SVG path 解析坐标
+        const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        tempPath.setAttribute('d', boardPathData);
+        tempSvg.appendChild(tempPath);
+        tempSvg.style.position = 'absolute';
+        tempSvg.style.left = '-9999px';
+        document.body.appendChild(tempSvg);
+
+        // 简化处理：把 d 字符串里的坐标按 Y -> 800 - Y 翻转
+        // 用一个简单的解析：匹配命令和数字
+        const result = transformPathYFlip(boardPathData, 800);
+        document.body.removeChild(tempSvg);
+        return result;
+    }
+
+    // 把 path 字符串中的 Y 坐标翻转：y' = ascender - y
+    function transformPathYFlip(d, ascender) {
+        // 命令字母和数字分割
+        const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+/g) || [];
+        let out = '';
+        let i = 0;
+        while (i < tokens.length) {
+            const t = tokens[i];
+            if (/[a-zA-Z]/.test(t)) {
+                out += t + ' ';
+                i++;
+                // 根据命令类型决定后面有几个坐标对
+                const cmd = t.toUpperCase();
+                let pairs = 0;
+                if (cmd === 'M' || cmd === 'L') pairs = 1;
+                else if (cmd === 'Q' || cmd === 'T') pairs = 1;
+                else if (cmd === 'C') pairs = 1;
+                else pairs = 0;
+                // 对于 Q/C，需要处理控制点；这里简化：所有坐标对都按 Y 翻转
+                // 实际上 Q/C 的控制点也在 tokens 里，按顺序处理即可
+                // 先按命令消费对应数量的数字
+                let consumed = 0;
+                while (i < tokens.length && !/[a-zA-Z]/.test(tokens[i])) {
+                    const num = parseFloat(tokens[i]);
+                    // 偶数索引是 X，奇数是 Y
+                    if (consumed % 2 === 1) {
+                        out += (ascender - num).toFixed(1) + ' ';
+                    } else {
+                        out += num + ' ';
+                    }
+                    consumed++;
+                    i++;
+                }
+            } else {
+                i++;
+            }
+        }
+        return out.trim();
+    }
+
     init();
 </script>
 </body>
