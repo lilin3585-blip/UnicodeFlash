@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>赛博字体工厂 - 十万字全量版</title>
+    <title>赛博字体工厂 - 十万字全DOM暴力版</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -19,7 +19,7 @@
 
         .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold;}
 
-        /* 虚拟列表容器 */
+        /* 🌟 全量 DOM 容器 */
         .char-panel { 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
@@ -28,9 +28,10 @@
             overflow-y: auto; 
             align-content: start; 
             padding-right: 2px;
+            /* 优化滚动性能 */
             will-change: transform;
         }
-        .char-btn { background: #333; color: white; border: 2px solid #444; border-radius: 6px; cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 65px; font-family: inherit;}
+        .char-btn { background: #333; color: white; border: 2px solid #444; border-radius: 6px; cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 65px; font-family: inherit; content-visibility: auto; contain-intrinsic-size: 65px;}
         .char-btn.active { background: #007AFF; border-color: #007AFF; }
         .char-btn.done { background: #34C759; border-color: #34C759; color: black; }
         .char-btn .hex { font-size: 10px; opacity: 0.6; margin-top: 2px; font-family: monospace; }
@@ -38,7 +39,6 @@
         .right-panel { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 20px; background: #121212; }
         .svg-wrapper { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1/1; background-color: white; border: 2px solid #444; border-radius: 8px; overflow: hidden; }
         
-        /* 完美居中的 SVG 底稿 */
         .ghost-text-svg { font-size: 800px; fill: rgba(0, 0, 0, 0.08); font-weight: normal; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 
         .svg-board { width: 100%; height: 100%; touch-action: none; position: relative; z-index: 10; }
@@ -56,7 +56,7 @@
 
 <div class="app-layout">
     <div class="left-panel">
-        <input type="text" id="fontName" class="font-name-input" value="MyFont_Part1" placeholder="导出字体名称">
+        <input type="text" id="fontName" class="font-name-input" value="MegaFont_Full" placeholder="导出字体名称">
         
         <label class="import-btn">
             📁 批量导入回退字体
@@ -64,15 +64,15 @@
         </label>
 
         <div class="page-info-bar">
-            <span id="pageInfo">全汉字区 (近 10 万字)</span>
+            <span id="pageInfo">正在生成十全汉字 DOM...</span>
         </div>
         
-        <!-- 虚拟列表容器 -->
+        <!-- 全量 DOM 容器 -->
         <div class="char-panel" id="charList"></div>
     </div>
 
     <div class="right-panel">
-        <div id="status">准备就绪。请在左侧滑动选字。</div>
+        <div id="status">准备就绪。初次加载可能需要几秒钟。</div>
         
         <div class="svg-wrapper">
             <svg id="svgBoard" class="svg-board" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg">
@@ -94,6 +94,7 @@
     const ghostText = document.getElementById('ghostText');
     const charList = document.getElementById('charList');
     const pageInfo = document.getElementById('pageInfo');
+    const statusText = document.getElementById('status');
 
     let isDrawing = false;
     let targetChars = []; 
@@ -101,50 +102,86 @@
     let glyphDatabase = {}; 
     let currentPathString = ""; 
     let currentPathEl = null;
-
     let loadedFonts = [];
 
-    // 🌟 核心：所有的汉字扩展区块定义
+    // 所有的汉字扩展区块（近 10 万字）
     const unicodeBlocks = [
-        { start: 0x4E00, end: 0x9FFF }, // 基本汉字
-        { start: 0x3400, end: 0x4DBF }, // 扩展 A
-        { start: 0x20000, end: 0x2A6DF }, // 扩展 B
-        { start: 0x2A700, end: 0x2B739 }, // 扩展 C
-        { start: 0x2B740, end: 0x2B81D }, // 扩展 D
-        { start: 0x2B820, end: 0x2CEA1 }, // 扩展 E
-        { start: 0x2CEB0, end: 0x2EBE0 }, // 扩展 F
-        { start: 0x30000, end: 0x3134A }, // 扩展 G
-        { start: 0x31350, end: 0x323AF }, // 扩展 H
-        { start: 0x2EBF0, end: 0x2EE5D }, // 扩展 I
-        { start: 0x323B0, end: 0x3347F }  // 扩展 J (2025/2026最新)
+        { start: 0x4E00, end: 0x9FFF }, { start: 0x3400, end: 0x4DBF },
+        { start: 0x20000, end: 0x2A6DF }, { start: 0x2A700, end: 0x2B739 },
+        { start: 0x2B740, end: 0x2B81D }, { start: 0x2B820, end: 0x2CEA1 },
+        { start: 0x2CEB0, end: 0x2EBE0 }, { start: 0x30000, end: 0x3134A },
+        { start: 0x31350, end: 0x323AF }, { start: 0x2EBF0, end: 0x2EE5D },
+        { start: 0x323B0, end: 0x3347F }
     ];
 
-    // 🚀 1. 生成十万级全量数据
-    function initAllChars() {
+    // 🚀 全量 DOM 暴力生成（带浏览器防卡死优化）
+    async function initAllChars() {
         targetChars = [];
-        // 遍历所有区块
         unicodeBlocks.forEach(block => {
             for (let code = block.start; code <= block.end; code++) {
-                // 跳过未分配的占位符码位
                 if (code >= 0xD800 && code <= 0xDFFF) continue; 
-                
                 const hex = code.toString(16).toUpperCase().padStart(4, '0');
                 let char = "";
                 try { char = String.fromCodePoint(code); } catch(e) { char = "?"; }
                 targetChars.push({ char: char, hex: hex });
             }
         });
-        
-        // 渲染第一屏
-        renderVirtualList();
-        selectChar(0);
+
+        pageInfo.innerText = `总字数: ${targetChars.length} (正在渲染DOM)`;
+        statusText.innerText = "正在构建 10 万个 DOM 节点，请稍候...";
+
+        // 分批渲染（防止一次性塞入 10 万个节点导致 Safari 闪退）
+        const batchSize = 1000; 
+        let currentIndex = 0;
+
+        function renderBatch() {
+            const fragment = document.createDocumentFragment();
+            const end = Math.min(currentIndex + batchSize, targetChars.length);
+
+            for (let i = currentIndex; i < end; i++) {
+                const item = targetChars[i];
+                const btn = document.createElement('div');
+                btn.className = 'char-btn';
+                btn.id = `btn-${item.hex}`;
+                // 利用 content-visibility 优化不在屏幕内的 DOM 节点
+                
+                const charSpan = document.createElement('span');
+                charSpan.textContent = item.char;
+                const hexSpan = document.createElement('span');
+                hexSpan.className = 'hex';
+                hexSpan.textContent = item.hex;
+
+                btn.appendChild(charSpan);
+                btn.appendChild(hexSpan);
+                
+                // 代理点击事件
+                btn.onclick = () => selectChar(i);
+
+                fragment.appendChild(btn);
+            }
+
+            charList.appendChild(fragment);
+            currentIndex = end;
+
+            if (currentIndex < targetChars.length) {
+                pageInfo.innerText = `已加载: ${currentIndex} / ${targetChars.length}`;
+                // 使用 requestAnimationFrame 让浏览器有空渲染屏幕，防止卡死
+                requestAnimationFrame(renderBatch); 
+            } else {
+                pageInfo.innerText = `全部加载完成: ${targetChars.length} 字`;
+                statusText.innerText = "准备就绪。所有生僻字已全量铺满！";
+                selectChar(0); // 渲染第一个字
+            }
+        }
+
+        renderBatch();
     }
 
     // 导入字体
     document.getElementById('fontUpload').addEventListener('change', async function(e) {
         const files = e.target.files;
         if (!files || files.length === 0) return;
-        document.getElementById('status').innerText = `⏳ 正在解析字体...`;
+        statusText.innerText = `⏳ 正在解析字体...`;
 
         for (let i = 0; i < files.length; i++) {
             const buffer = await files[i].arrayBuffer();
@@ -157,81 +194,40 @@
         charList.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
         ghostText.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
         
-        document.getElementById('status').innerText = `✅ 字体导入成功！`;
-        renderVirtualList(); 
+        statusText.innerText = `✅ 字体导入成功！`;
     });
 
-    // 🚀 2. 虚拟列表渲染（防止 10 万字把浏览器卡死）
-    let currentVisibleStart = -1;
-    charList.addEventListener('scroll', renderVirtualList);
-
-    function renderVirtualList() {
-        const itemHeight = 73; // 65 + 8
-        const cols = 3;
-        const scrollTop = charList.scrollTop;
-        
-        // 计算起始索引
-        const startRow = Math.floor(scrollTop / itemHeight);
-        const startIndex = startRow * cols;
-        
-        if (startIndex === currentVisibleStart && charList.children.length > 0) return;
-        currentVisibleStart = startIndex;
-
-        // 每次渲染 60 个格子
-        const renderCount = 60; 
-        charList.innerHTML = '';
-        const fragment = document.createDocumentFragment();
-
-        for (let i = 0; i < renderCount; i++) {
-            const index = startIndex + i;
-            if (index >= targetChars.length) break;
-
-            const item = targetChars[index];
-            const btn = document.createElement('div');
-            btn.className = 'char-btn';
-            if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) btn.classList.add('done');
-            if (index === currentCharIndex) btn.classList.add('active');
-            
-            const charSpan = document.createElement('span');
-            charSpan.textContent = item.char;
-            const hexSpan = document.createElement('span');
-            hexSpan.className = 'hex';
-            hexSpan.textContent = item.hex;
-
-            btn.appendChild(charSpan);
-            btn.appendChild(hexSpan);
-            
-            (function(idx) {
-                btn.onclick = () => selectChar(idx);
-            })(index);
-
-            fragment.appendChild(btn);
-        }
-        charList.appendChild(fragment);
-    }
-
-    // 🚀 3. 选中汉字
+    // 选中汉字
     function selectChar(index) {
+        // 移除上一个高亮
+        if (targetChars[currentCharIndex]) {
+            const oldBtn = document.getElementById(`btn-${targetChars[currentCharIndex].hex}`);
+            if (oldBtn) oldBtn.classList.remove('active');
+        }
+
         currentCharIndex = index;
         const hex = targetChars[index].hex;
         const char = targetChars[index].char;
         
-        // 更新右侧底稿字
-        ghostText.textContent = char;
-        pageInfo.innerText = `当前选区: U+${hex}`;
+        // 高亮当前
+        const newBtn = document.getElementById(`btn-${hex}`);
+        if (newBtn) {
+            newBtn.classList.add('active');
+            // 平滑滚动到当前选中项
+            newBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
 
-        // 更新画板
+        ghostText.textContent = char;
+        pageInfo.innerText = `当前: U+${hex}`;
+
         clearSVG();
         const paths = glyphDatabase[hex];
         if (paths && paths.length > 0) {
             paths.forEach(pathData => createSVGPath(pathData));
-            document.getElementById('status').innerText = `已加载 U+${hex}`;
+            statusText.innerText = `已加载 U+${hex}`;
         } else {
-            document.getElementById('status').innerText = `正在书写 U+${hex}`;
+            statusText.innerText = `正在书写 U+${hex}`;
         }
-
-        // 刷新左侧高亮
-        renderVirtualList();
     }
 
     function clearSVG() {
@@ -257,7 +253,12 @@
         const hex = targetChars[currentCharIndex].hex;
         const paths = Array.from(svgBoard.querySelectorAll('.drawn-stroke')).map(p => p.getAttribute('d'));
         glyphDatabase[hex] = paths;
-        renderVirtualList();
+        
+        const currentBtn = document.getElementById(`btn-${hex}`);
+        if (currentBtn) {
+            if (paths.length > 0) currentBtn.classList.add('done');
+            else currentBtn.classList.remove('done');
+        }
     }
 
     function getPos(e) {
@@ -312,11 +313,12 @@
     }
 
     function exportFullFont() {
-        const customName = document.getElementById('fontName').value || "MyCustomFont";
+        const customName = document.getElementById('fontName').value || "MegaFont";
         let hasData = false;
         const notdefGlyph = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 1000, path: new opentype.Path() });
         let glyphs = [notdefGlyph];
 
+        // 这里的 forEach 会把所有 10 万个字都塞进 OTF 文件中
         targetChars.forEach(item => {
             const hex = item.hex;
             const unicodeVal = parseInt(hex, 16);
@@ -338,7 +340,7 @@
         });
 
         if (!hasData) return alert("当前面板没画字！");
-        document.getElementById('status').innerText = "正在编译...";
+        statusText.innerText = "正在编译...";
 
         const font = new opentype.Font({
             familyName: customName, styleName: 'Regular', unitsPerEm: 1000, ascender: 800, descender: -200, glyphs: glyphs
@@ -351,10 +353,10 @@
         a.href = url; a.download = `${customName}.otf`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         
-        document.getElementById('status').innerText = `导出成功！`;
+        statusText.innerText = `导出成功！`;
     }
 
-    // 启动超级列表
+    // 启动
     initAllChars();
 </script>
 </body>
