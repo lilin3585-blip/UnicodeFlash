@@ -3,46 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>赛博字体工厂 - 分卷版</title>
+    <title>赛博字体工厂 - DOM极速版</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { background-color: #121212; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 10px; min-height: 100vh; }
+        body { background-color: #121212; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 10px; height: 100vh; overflow: hidden; }
         
-        .app-container { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 15px; }
+        .app-container { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 10px; height: 100%; }
         
-        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
         input[type="text"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: white; font-size: 16px; }
         
-        .import-area { display: flex; gap: 10px; }
-        .import-area input { flex: 1; font-family: monospace; }
-        .btn-primary { padding: 0 15px; background: #007AFF; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; }
-        .btn-clear { background: #666; }
+        .page-controls { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+        .page-controls button { padding: 10px 15px; background: #007AFF; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; }
+        .page-info { font-family: monospace; font-size: 14px; color: #aaa; }
 
-        /* 字库面板：固定高度，内部滚动，不重叠 */
+        /* 🌟 DOM 面板：用 Grid 排列，内部滚动，不侵占画板 */
         .char-panel { 
             display: grid; 
             grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
             gap: 8px; 
             background: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;
-            max-height: 180px; 
+            flex: 1; /* 占据剩余空间 */
             overflow-y: auto; 
+            align-content: start;
         }
         
         .char-btn { 
             padding: 8px 2px; background: #333; color: white; border: 2px solid #444; border-radius: 6px; 
             cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 70px; /* 固定高度，防止挤在一起 */
         }
         .char-btn.active { background: #007AFF; border-color: #007AFF; }
         .char-btn.done { background: #34C759; border-color: #34C759; color: black; }
         .char-btn .hex { font-size: 10px; opacity: 0.6; margin-top: 4px; font-family: monospace; }
 
         /* 画板区域 */
-        .canvas-wrapper { width: 100%; display: flex; justify-content: center; }
+        .canvas-wrapper { width: 100%; display: flex; justify-content: center; flex-shrink: 0; }
         .svg-board { 
             background-color: white; border: 2px solid #444; border-radius: 8px;
-            width: 100%; max-width: 512px; aspect-ratio: 1/1;
+            width: 100%; max-width: 400px; aspect-ratio: 1/1; /* 稍微缩小画板，给面板留空间 */
             touch-action: none; 
             position: relative;
         }
@@ -55,12 +56,11 @@
         .drawn-stroke:hover { stroke: #FF3B30; }
 
         /* 底部操作区 */
-        .actions { display: flex; gap: 10px; width: 100%; }
-        button.action { padding: 15px; font-size: 16px; border: none; border-radius: 8px; font-weight: bold; flex: 1; cursor: pointer; transition: 0.2s; }
+        .actions { display: flex; gap: 10px; width: 100%; flex-shrink: 0; }
+        button.action { padding: 12px; font-size: 16px; border: none; border-radius: 8px; font-weight: bold; flex: 1; cursor: pointer; transition: 0.2s; }
         .btn-save { background-color: #FF9500; color: black; }
         .btn-export { background-color: #FF3B30; color: white; }
-        .btn-save:active, .btn-export:active, .btn-primary:active, .btn-clear:active { transform: scale(0.97); }
-        #status { color: #00ff00; font-size: 14px; text-align: center; min-height: 20px; }
+        #status { color: #00ff00; font-size: 14px; text-align: center; min-height: 20px; flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -68,13 +68,15 @@
 <div class="app-container">
     <div class="control-group">
         <input type="text" id="fontName" placeholder="输入字体名称" value="MyCyberFont_Part1">
-        <div class="import-area">
-            <input type="text" id="charInput" placeholder="输入十六进制码位，如: 4E00, 319D9, 4E00-4E20" value="4E00, 6D2A, 319D9, 3E100, 2EBC">
-            <button class="btn-primary" onclick="buildCharList()">生成</button>
-            <button class="btn-primary btn-clear" onclick="resetAll()">清空面板</button>
+        
+        <div class="page-controls">
+            <button onclick="changePage(-1)">⬅️ 上一页</button>
+            <div class="page-info" id="pageInfo">范围: 0000 - 00FF</div>
+            <button onclick="changePage(1)">下一页 ➡️</button>
         </div>
     </div>
 
+    <!-- 纯 DOM 面板 -->
     <div class="char-panel" id="charList"></div>
 
     <div class="canvas-wrapper">
@@ -88,93 +90,100 @@
         <button class="action btn-save" onclick="saveCurrentChar()">💾 保存</button>
         <button class="action btn-export" onclick="exportFullFont()">🚀 导出 OTF</button>
     </div>
-    <div id="status">准备就绪。当前已绘制字库不超限，可随时导出。</div>
+    <div id="status">准备就绪。点击画错的线条可以删除。</div>
 </div>
 
 <script>
+    // 🚀 DOM 节点缓存，避免频繁查询
     const svgBoard = document.getElementById('svgBoard');
+    const charList = document.getElementById('charList');
 
     let isDrawing = false;
     let targetChars = []; 
     let currentCharIndex = 0; 
-    let glyphDatabase = {}; 
-    
+    let glyphDatabase = {}; // { "4E00": [ "M 100 200 L...", ... ] }
     let currentPathString = ""; 
+    let currentPathEl = null;
 
-    // 🚀 一键清空面板，准备画下一个分卷
-    function resetAll() {
-        document.getElementById('charInput').value = '';
-        targetChars = [];
-        glyphDatabase = {};
-        currentCharIndex = 0;
-        clearSVG();
-        renderCharList();
-        document.getElementById('status').innerText = "面板已清空，请输入下一批码位。";
-    }
+    // 分页配置
+    const PAGE_SIZE = 256; 
+    let currentPage = 0;   
+    const MAX_CODE = 0x3347F; 
 
-    function buildCharList() {
-        const inputStr = document.getElementById('charInput').value;
-        targetChars = [];
-        glyphDatabase = {}; 
-        currentCharIndex = 0;
-
-        const parts = inputStr.split(',').map(s => s.trim()).filter(Boolean);
-        
-        for (let part of parts) {
-            if (part.includes('-')) {
-                const [startStr, endStr] = part.split('-');
-                const start = parseInt(startStr, 16);
-                const end = parseInt(endStr, 16);
-                if (!isNaN(start) && !isNaN(end) && start <= end) {
-                    // 防止生成超过 65534 个导致卡死（按需限制，比如这里限制 2000 个）
-                    const count = Math.min(end - start + 1, 2000); 
-                    for (let i = 0; i < count; i++) {
-                        addCharCode(start + i);
-                    }
-                }
-            } else {
-                const code = parseInt(part, 16);
-                if (!isNaN(code)) {
-                    addCharCode(code);
-                }
-            }
-        }
-
-        renderCharList();
-        if (targetChars.length > 0) {
-            loadCharToCanvas(targetChars[0].hex);
-        } else {
-            clearSVG();
-            document.getElementById('status').innerText = "请输入正确的十六进制码位！";
-        }
-    }
-
-    function addCharCode(code) {
-        const hex = code.toString(16).toUpperCase();
-        const char = String.fromCodePoint(code);
-        if (!targetChars.find(c => c.hex === hex)) {
-            targetChars.push({ char: char, hex: hex });
-        }
-    }
-
+    // 🚀 DOM 优化：使用 DocumentFragment 批量插入
     function renderCharList() {
-        const listDiv = document.getElementById('charList');
-        listDiv.innerHTML = '';
+        charList.innerHTML = ''; // 清空当前 DOM
+        const fragment = document.createDocumentFragment();
+
         targetChars.forEach((item, index) => {
             const btn = document.createElement('div');
             btn.className = 'char-btn';
             if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) btn.classList.add('done');
             if (index === currentCharIndex) btn.classList.add('active');
             
-            btn.innerHTML = `${item.char}<span class="hex">${item.hex}</span>`;
+            // 使用 textContent 和 span 组合，避免 innerHTML 解析开销
+            const charSpan = document.createElement('span');
+            charSpan.textContent = item.char;
             
+            const hexSpan = document.createElement('span');
+            hexSpan.className = 'hex';
+            hexSpan.textContent = item.hex;
+
+            btn.appendChild(charSpan);
+            btn.appendChild(hexSpan);
+            
+            // 绑定事件
             btn.onclick = () => {
                 currentCharIndex = index;
                 loadCharToCanvas(item.hex);
-                renderCharList(); 
+                // 只更新高亮状态，不全量重绘
+                const allBtns = charList.querySelectorAll('.char-btn');
+                allBtns.forEach((b, i) => {
+                    if (i === index) b.classList.add('active');
+                    else b.classList.remove('active');
+                });
             };
-            listDiv.appendChild(btn);
+            fragment.appendChild(btn);
         });
+
+        charList.appendChild(fragment); // 一次 DOM 操作搞定
+    }
+
+    function loadPage(pageIndex) {
+        currentPage = pageIndex;
+        const startCode = currentPage * PAGE_SIZE;
+        const endCode = Math.min(startCode + PAGE_SIZE - 1, MAX_CODE);
+        
+        if (startCode > MAX_CODE) return;
+
+        const hexStart = startCode.toString(16).toUpperCase().padStart(4, '0');
+        const hexEnd = endCode.toString(16).toUpperCase().padStart(4, '0');
+        document.getElementById('pageInfo').innerText = `范围: ${hexStart} - ${hexEnd}`;
+
+        targetChars = [];
+        for (let code = startCode; code <= endCode; code++) {
+            const hex = code.toString(16).toUpperCase().padStart(4, '0');
+            let char = "";
+            try { char = String.fromCodePoint(code); } catch(e) { char = "?"; }
+            targetChars.push({ char: char, hex: hex });
+        }
+
+        currentCharIndex = 0;
+        renderCharList();
+        loadCharToCanvas(targetChars[0].hex);
+    }
+
+    function changePage(direction) {
+        const nextPage = currentPage + direction;
+        if (nextPage >= 0 && (nextPage * PAGE_SIZE) <= MAX_CODE) {
+            loadPage(nextPage);
+        }
+    }
+
+    function clearSVG() {
+        // 只移除带有 drawn-stroke 类的节点，保留背景网格
+        const strokes = svgBoard.querySelectorAll('.drawn-stroke');
+        strokes.forEach(s => s.remove());
     }
 
     function loadCharToCanvas(hex) {
@@ -190,11 +199,6 @@
         }
     }
 
-    function clearSVG() {
-        const strokes = svgBoard.querySelectorAll('.drawn-stroke');
-        strokes.forEach(s => s.remove());
-    }
-
     function createSVGPath(pathData) {
         const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
         pathEl.setAttribute("d", pathData);
@@ -202,7 +206,7 @@
         
         pathEl.onclick = (e) => {
             e.stopPropagation(); 
-            pathEl.remove();
+            pathEl.remove(); // DOM 删除极快
             updateCurrentCharData(); 
         };
         svgBoard.appendChild(pathEl);
@@ -214,7 +218,13 @@
         const hex = targetChars[currentCharIndex].hex;
         const paths = Array.from(svgBoard.querySelectorAll('.drawn-stroke')).map(p => p.getAttribute('d'));
         glyphDatabase[hex] = paths;
-        renderCharList();
+        
+        // 更新按钮状态（变绿）
+        const btns = charList.querySelectorAll('.char-btn');
+        if (btns[currentCharIndex]) {
+            if (paths.length > 0) btns[currentCharIndex].classList.add('done');
+            else btns[currentCharIndex].classList.remove('done');
+        }
     }
 
     function getPos(e) {
@@ -226,8 +236,6 @@
             y: ((clientY - rect.top) / rect.height) * 1000 
         };
     }
-
-    let currentPathEl = null;
 
     function startDrawing(e) {
         if (targetChars.length === 0) return;
@@ -245,6 +253,7 @@
         
         const pos = getPos(e);
         currentPathString += ` L ${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
+        // 优化：直接设置 d 属性
         currentPathEl.setAttribute("d", currentPathString);
     }
 
@@ -257,12 +266,13 @@
             const hex = targetChars[currentCharIndex].hex;
             if (!glyphDatabase[hex]) glyphDatabase[hex] = [];
             glyphDatabase[hex].push(currentPathString);
-            renderCharList(); 
+            updateCurrentCharData();
         }
         currentPathString = "";
         currentPathEl = null;
     }
 
+    // 绑定事件 (Passive: false 防止页面跟着滚动)
     svgBoard.addEventListener('mousedown', startDrawing); 
     svgBoard.addEventListener('mousemove', draw); 
     svgBoard.addEventListener('mouseup', stopDrawing);
@@ -279,12 +289,13 @@
     }
 
     function exportFullFont() {
-        const customName = document.getElementById('fontName').value || "MyCustomFont_Part1";
+        const customName = document.getElementById('fontName').value || "MyCustomFont";
         let hasData = false;
         
         const notdefGlyph = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 1000, path: new opentype.Path() });
         let glyphs = [notdefGlyph];
 
+        // 为了性能，只导出当前页画过的字
         targetChars.forEach(item => {
             const hex = item.hex;
             const unicodeVal = parseInt(hex, 16);
@@ -307,7 +318,7 @@
             glyphs.push(glyph);
         });
 
-        if (!hasData) return alert("你一个字都没画呢！");
+        if (!hasData) return alert("你当前页一个字都没画呢！");
 
         document.getElementById('status').innerText = "正在编译 OTF...";
 
@@ -319,13 +330,14 @@
         const blob = new Blob([buffer], {type: "application/octet-stream"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = `${customName}.otf`;
+        a.href = url; a.download = `${customName}_Page${currentPage}.otf`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         
-        document.getElementById('status').innerText = `🎉 导出成功！请改名为 Part2 并清空面板继续。`;
+        document.getElementById('status').innerText = `🎉 第 ${currentPage} 页导出成功！`;
     }
 
-    buildCharList();
+    // 初始化
+    loadPage(0);
 </script>
 </body>
 </html>
