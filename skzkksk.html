@@ -3,15 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>赛博字体工厂 - 十万字全DOM暴力版</title>
+    <title>赛博字体工厂 - 虚拟滚动极速版</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
+    <!-- 🌟 引入 Virtua 虚拟滚动库的底层依赖 (Preact 核心) -->
+    <script src="https://cdn.jsdelivr.net/npm/preact@10/dist/preact.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/virtua@0.38/dist/virtua.umd.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         html, body { height: 100vh; width: 100vw; margin: 0; padding: 0; overflow: hidden; background-color: #121212; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
         
         .app-layout { display: flex; height: 100vh; width: 100vw; }
         
-        .left-panel { width: 280px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; padding: 15px; gap: 12px; }
+        /* 左侧面板 */
+        .left-panel { width: 260px; height: 100%; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; padding: 15px; gap: 12px; }
         .font-name-input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; font-size: 14px; }
         
         .import-btn { display: block; width: 100%; padding: 10px; background: #5856D6; color: white; text-align: center; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
@@ -19,29 +23,33 @@
 
         .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold;}
 
-        /* 🌟 全量 DOM 容器 */
+        /* 🌟 虚拟滚动容器 */
+        .char-panel-wrapper { 
+            flex: 1; 
+            position: relative;
+            overflow: hidden;
+        }
         .char-panel { 
+            height: 100%;
+            overflow-y: auto; 
             display: grid; 
             grid-template-columns: repeat(3, 1fr); 
             gap: 8px; 
-            flex: 1; 
-            overflow-y: auto; 
             align-content: start; 
             padding-right: 2px;
-            /* 优化滚动性能 */
-            will-change: transform;
         }
-        .char-btn { background: #333; color: white; border: 2px solid #444; border-radius: 6px; cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 65px; font-family: inherit; content-visibility: auto; contain-intrinsic-size: 65px;}
+        
+        .char-btn { background: #333; color: white; border: 2px solid #444; border-radius: 6px; cursor: pointer; text-align: center; font-size: 20px; transition: 0.1s; user-select: none; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 65px; font-family: inherit;}
         .char-btn.active { background: #007AFF; border-color: #007AFF; }
         .char-btn.done { background: #34C759; border-color: #34C759; color: black; }
         .char-btn .hex { font-size: 10px; opacity: 0.6; margin-top: 2px; font-family: monospace; }
 
+        /* 右侧画板区 */
         .right-panel { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 20px; background: #121212; }
         .svg-wrapper { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1/1; background-color: white; border: 2px solid #444; border-radius: 8px; overflow: hidden; }
-        
         .ghost-text-svg { font-size: 800px; fill: rgba(0, 0, 0, 0.08); font-weight: normal; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
-
         .svg-board { width: 100%; height: 100%; touch-action: none; position: relative; z-index: 10; }
+        
         .drawn-stroke { fill: none; stroke: #000; stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; pointer-events: auto; cursor: pointer; }
         .drawn-stroke:hover { stroke: #FF3B30; }
 
@@ -64,15 +72,17 @@
         </label>
 
         <div class="page-info-bar">
-            <span id="pageInfo">正在生成十全汉字 DOM...</span>
+            <span id="pageInfo">十万字极速加载中...</span>
         </div>
         
-        <!-- 全量 DOM 容器 -->
-        <div class="char-panel" id="charList"></div>
+        <!-- 虚拟列表容器 -->
+        <div class="char-panel-wrapper">
+            <div class="char-panel" id="charList"></div>
+        </div>
     </div>
 
     <div class="right-panel">
-        <div id="status">准备就绪。初次加载可能需要几秒钟。</div>
+        <div id="status">准备就绪。初次加载已开启极速模式。</div>
         
         <div class="svg-wrapper">
             <svg id="svgBoard" class="svg-board" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg">
@@ -114,8 +124,7 @@
         { start: 0x323B0, end: 0x3347F }
     ];
 
-    // 🚀 全量 DOM 暴力生成（带浏览器防卡死优化）
-    async function initAllChars() {
+    function initAllChars() {
         targetChars = [];
         unicodeBlocks.forEach(block => {
             for (let code = block.start; code <= block.end; code++) {
@@ -127,54 +136,90 @@
             }
         });
 
-        pageInfo.innerText = `总字数: ${targetChars.length} (正在渲染DOM)`;
-        statusText.innerText = "正在构建 10 万个 DOM 节点，请稍候...";
+        pageInfo.innerText = `总字数: ${targetChars.length} (极速模式)`;
+        statusText.innerText = "准备就绪。虚拟滚动已激活。";
+        
+        // 手动生成第一屏的数据并选中第一个
+        updateListDOM(0); 
+        selectChar(0, false);
+    }
 
-        // 分批渲染（防止一次性塞入 10 万个节点导致 Safari 闪退）
-        const batchSize = 1000; 
-        let currentIndex = 0;
+    // 🚀 虚拟列表核心 DOM 回收逻辑
+    // 为了极致性能，我们自己手写一个简单的虚拟 DOM 渲染（不用引入庞大框架）
+    let currentVisibleStart = -1;
+    charList.addEventListener('scroll', () => {
+        const itemHeight = 73; 
+        const cols = 3;
+        const startRow = Math.floor(charList.scrollTop / itemHeight);
+        const startIndex = startRow * cols;
+        if (startIndex !== currentVisibleStart) {
+            updateListDOM(startIndex);
+        }
+    });
 
-        function renderBatch() {
-            const fragment = document.createDocumentFragment();
-            const end = Math.min(currentIndex + batchSize, targetChars.length);
+    function updateListDOM(startIndex) {
+        currentVisibleStart = startIndex;
+        charList.innerHTML = ''; // 清空旧节点
+        const fragment = document.createDocumentFragment();
+        const renderCount = 60; // 只渲染这 60 个
 
-            for (let i = currentIndex; i < end; i++) {
-                const item = targetChars[i];
-                const btn = document.createElement('div');
-                btn.className = 'char-btn';
-                btn.id = `btn-${item.hex}`;
-                // 利用 content-visibility 优化不在屏幕内的 DOM 节点
-                
-                const charSpan = document.createElement('span');
-                charSpan.textContent = item.char;
-                const hexSpan = document.createElement('span');
-                hexSpan.className = 'hex';
-                hexSpan.textContent = item.hex;
+        for (let i = 0; i < renderCount; i++) {
+            const index = startIndex + i;
+            if (index >= targetChars.length) break;
 
-                btn.appendChild(charSpan);
-                btn.appendChild(hexSpan);
-                
-                // 代理点击事件
-                btn.onclick = () => selectChar(i);
+            const item = targetChars[index];
+            const btn = document.createElement('div');
+            btn.className = 'char-btn';
+            if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) btn.classList.add('done');
+            if (index === currentCharIndex) btn.classList.add('active');
+            
+            const charSpan = document.createElement('span');
+            charSpan.textContent = item.char;
+            const hexSpan = document.createElement('span');
+            hexSpan.className = 'hex';
+            hexSpan.textContent = item.hex;
 
-                fragment.appendChild(btn);
-            }
+            btn.appendChild(charSpan);
+            btn.appendChild(hexSpan);
+            btn.onclick = () => selectChar(index, true);
+            fragment.appendChild(btn);
+        }
+        charList.appendChild(fragment);
+    }
 
-            charList.appendChild(fragment);
-            currentIndex = end;
-
-            if (currentIndex < targetChars.length) {
-                pageInfo.innerText = `已加载: ${currentIndex} / ${targetChars.length}`;
-                // 使用 requestAnimationFrame 让浏览器有空渲染屏幕，防止卡死
-                requestAnimationFrame(renderBatch); 
-            } else {
-                pageInfo.innerText = `全部加载完成: ${targetChars.length} 字`;
-                statusText.innerText = "准备就绪。所有生僻字已全量铺满！";
-                selectChar(0); // 渲染第一个字
+    function selectChar(index, scrollToList = false) {
+        // 移除上一个高亮
+        if (currentCharIndex !== index && targetChars[currentCharIndex]) {
+            const oldBtns = charList.querySelectorAll('.char-btn');
+            // 找到当前渲染出的对应索引的按钮
+            const relativeIndex = currentCharIndex - currentVisibleStart;
+            if (relativeIndex >= 0 && relativeIndex < oldBtns.length) {
+                oldBtns[relativeIndex].classList.remove('active');
             }
         }
 
-        renderBatch();
+        currentCharIndex = index;
+        const hex = targetChars[index].hex;
+        const char = targetChars[index].char;
+        
+        // 如果点击的字刚好在渲染区，加上高亮
+        const relIndex = index - currentVisibleStart;
+        const currentBtns = charList.querySelectorAll('.char-btn');
+        if (relIndex >= 0 && relIndex < currentBtns.length) {
+            currentBtns[relIndex].classList.add('active');
+        }
+
+        ghostText.textContent = char;
+        pageInfo.innerText = `当前: U+${hex}`;
+
+        clearSVG();
+        const paths = glyphDatabase[hex];
+        if (paths && paths.length > 0) {
+            paths.forEach(pathData => createSVGPath(pathData));
+            statusText.innerText = `已加载 U+${hex}`;
+        } else {
+            statusText.innerText = `正在书写 U+${hex}`;
+        }
     }
 
     // 导入字体
@@ -193,42 +238,10 @@
 
         charList.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
         ghostText.style.fontFamily = loadedFonts.join(', ') + ', sans-serif';
+        updateListDOM(currentVisibleStart); // 刷新当前 DOM
         
         statusText.innerText = `✅ 字体导入成功！`;
     });
-
-    // 选中汉字
-    function selectChar(index) {
-        // 移除上一个高亮
-        if (targetChars[currentCharIndex]) {
-            const oldBtn = document.getElementById(`btn-${targetChars[currentCharIndex].hex}`);
-            if (oldBtn) oldBtn.classList.remove('active');
-        }
-
-        currentCharIndex = index;
-        const hex = targetChars[index].hex;
-        const char = targetChars[index].char;
-        
-        // 高亮当前
-        const newBtn = document.getElementById(`btn-${hex}`);
-        if (newBtn) {
-            newBtn.classList.add('active');
-            // 平滑滚动到当前选中项
-            newBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-
-        ghostText.textContent = char;
-        pageInfo.innerText = `当前: U+${hex}`;
-
-        clearSVG();
-        const paths = glyphDatabase[hex];
-        if (paths && paths.length > 0) {
-            paths.forEach(pathData => createSVGPath(pathData));
-            statusText.innerText = `已加载 U+${hex}`;
-        } else {
-            statusText.innerText = `正在书写 U+${hex}`;
-        }
-    }
 
     function clearSVG() {
         const strokes = svgBoard.querySelectorAll('.drawn-stroke');
@@ -254,10 +267,12 @@
         const paths = Array.from(svgBoard.querySelectorAll('.drawn-stroke')).map(p => p.getAttribute('d'));
         glyphDatabase[hex] = paths;
         
-        const currentBtn = document.getElementById(`btn-${hex}`);
-        if (currentBtn) {
-            if (paths.length > 0) currentBtn.classList.add('done');
-            else currentBtn.classList.remove('done');
+        // 找到对应按钮并变绿
+        const relIndex = currentCharIndex - currentVisibleStart;
+        const currentBtns = charList.querySelectorAll('.char-btn');
+        if (relIndex >= 0 && relIndex < currentBtns.length) {
+            if (paths.length > 0) currentBtns[relIndex].classList.add('done');
+            else currentBtns[relIndex].classList.remove('done');
         }
     }
 
@@ -318,7 +333,6 @@
         const notdefGlyph = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 1000, path: new opentype.Path() });
         let glyphs = [notdefGlyph];
 
-        // 这里的 forEach 会把所有 10 万个字都塞进 OTF 文件中
         targetChars.forEach(item => {
             const hex = item.hex;
             const unicodeVal = parseInt(hex, 16);
