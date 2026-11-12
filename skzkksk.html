@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>赛博字体工厂 - 纯手工无敌版</title>
+    <title>赛博字体工厂 - v1.3.5 丝滑版</title>
+    <!-- 锁定 1.3.4 版本 -->
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -19,8 +20,10 @@
 
         .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold; flex-shrink: 0;}
 
+        /* 🌟 核心修复：加上 min-height: 0 */
         .char-panel-wrapper {
             flex: 1;
+            min-height: 0; 
             overflow-y: auto;
             position: relative;
             border: 1px solid #333;
@@ -122,7 +125,7 @@
     let currentPathString = "";
     let currentPathEl = null;
     let loadedFonts = [];
-    let parsedFonts = []; // 存 opentype 解析后的字体，用于自动生成字形
+    let parsedFonts = []; 
 
     const unicodeBlocks = [
         { start: 0x4E00, end: 0x9FFF }, { start: 0x3400, end: 0x4DBF },
@@ -214,12 +217,12 @@
             document.fonts.add(fontFace);
             loadedFonts.push('ImportedFont_' + i);
 
-            // 同时用 opentype 解析一份，供自动生成字形用
             try {
+                // 深拷贝 buffer 防止被 opentype 锁死
                 const parsed = opentype.parse(buffer.slice(0));
                 parsedFonts.push(parsed);
             } catch (err) {
-                console.warn('opentype 解析失败（仅影响自动生成）:', err);
+                console.warn('opentype 解析失败:', err);
             }
         }
 
@@ -228,7 +231,7 @@
 
         const startRow = Math.floor(scrollWrapper.scrollTop / ITEM_HEIGHT);
         renderVisibleItems(Math.max(0, startRow * COLS));
-        statusText.innerText = `✅ 字体导入成功！可点「⚡ 一键生成此字」自动生成字形`;
+        statusText.innerText = `✅ 字体导入成功！`;
     });
 
     function selectChar(index) {
@@ -341,7 +344,7 @@
         updateCurrentCharData();
     }
 
-    /* ============ 新增：一键从导入字体生成当前字字形 ============ */
+    /* ============ 一键从导入字体生成当前字字形 ============ */
     function autoGenerateCurrentChar() {
         if (targetChars.length === 0) return;
         if (parsedFonts.length === 0) {
@@ -350,18 +353,19 @@
         }
         const hex = targetChars[currentCharIndex].hex;
         const char = targetChars[currentCharIndex].char;
-        const codePoint = parseInt(hex, 16);
 
-        // 从已解析字体里找这个字符的字形
         let glyphPath = null;
+        let sourceFont = null;
+
         for (const font of parsedFonts) {
             try {
                 const glyph = font.charToGlyph(char);
                 if (glyph && glyph.path && glyph.path.commands.length > 0 && glyph.index !== 0) {
                     glyphPath = glyph.path;
+                    sourceFont = font;
                     break;
                 }
-            } catch (err) { /* 继续找下一个字体 */ }
+            } catch (err) { /* 继续找下一个 */ }
         }
 
         if (!glyphPath) {
@@ -369,17 +373,12 @@
             return;
         }
 
-        // 把字体的路径坐标映射到画板的 0..1000 坐标
-        // 字体坐标 Y 向上，画板 Y 向下，需要翻转
-        const em = fontUnitsPerEm(parsedFonts.find(f => {
-            try { const g = f.charToGlyph(char); return g && g.index !== 0; } catch { return false; }
-        }) || parsedFonts[0]);
+        const em = fontUnitsPerEm(sourceFont);
         const scale = 1000 / em;
-        const ascender = 800; // 假设字体 ascender，常见值
+        const ascender = 800; 
 
         const pathString = pathToSVGString(glyphPath, scale, ascender);
 
-        // 清掉手绘路径，换成自动生成的
         clearSVG();
         glyphDatabase[hex] = [pathString];
         createSVGPath(pathString);
@@ -391,8 +390,6 @@
         return font.unitsPerEm || 1000;
     }
 
-    // 把 opentype.Path 转成 SVG path 字符串，并缩放到画板 0..1000
-    // 画板假设字形基线在 y=800（ascender=800），Y 轴向下
     function pathToSVGString(path, scale, ascender) {
         let d = '';
         const tx = x => (x * scale).toFixed(1);
@@ -414,17 +411,13 @@
         let glyphs = [notdefGlyph];
         let count = 0;
 
-        // 只遍历 glyphDatabase 里真正有数据的字
         Object.keys(glyphDatabase).forEach(hex => {
             const paths = glyphDatabase[hex];
             if (!paths || paths.length === 0) return;
 
             const unicodeVal = parseInt(hex, 16);
             const combinedPathData = paths.join(" ");
-
-            // 画板坐标 0..1000，Y 向下；字体坐标 Y 向上，基线在 ascender=800
-            // 需要把画板坐标转换回字体坐标
-            const fontPathData = svgBoardPathToFontPath(combinedPathData);
+            const fontPathData = transformPathYFlip(combinedPathData, 800);
 
             const glyph = new opentype.Glyph({
                 name: `char_${hex}`, unicode: unicodeVal, advanceWidth: 1000,
@@ -457,27 +450,8 @@
         }
     }
 
-    // 画板坐标（0..1000，Y 向下）-> 字体坐标（Y 向上，基线 ascender=800）
-    function svgBoardPathToFontPath(boardPathData) {
-        // 用临时 SVG path 解析坐标
-        const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        const tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        tempPath.setAttribute('d', boardPathData);
-        tempSvg.appendChild(tempPath);
-        tempSvg.style.position = 'absolute';
-        tempSvg.style.left = '-9999px';
-        document.body.appendChild(tempSvg);
-
-        // 简化处理：把 d 字符串里的坐标按 Y -> 800 - Y 翻转
-        // 用一个简单的解析：匹配命令和数字
-        const result = transformPathYFlip(boardPathData, 800);
-        document.body.removeChild(tempSvg);
-        return result;
-    }
-
     // 把 path 字符串中的 Y 坐标翻转：y' = ascender - y
     function transformPathYFlip(d, ascender) {
-        // 命令字母和数字分割
         const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+/g) || [];
         let out = '';
         let i = 0;
@@ -486,20 +460,9 @@
             if (/[a-zA-Z]/.test(t)) {
                 out += t + ' ';
                 i++;
-                // 根据命令类型决定后面有几个坐标对
-                const cmd = t.toUpperCase();
-                let pairs = 0;
-                if (cmd === 'M' || cmd === 'L') pairs = 1;
-                else if (cmd === 'Q' || cmd === 'T') pairs = 1;
-                else if (cmd === 'C') pairs = 1;
-                else pairs = 0;
-                // 对于 Q/C，需要处理控制点；这里简化：所有坐标对都按 Y 翻转
-                // 实际上 Q/C 的控制点也在 tokens 里，按顺序处理即可
-                // 先按命令消费对应数量的数字
                 let consumed = 0;
                 while (i < tokens.length && !/[a-zA-Z]/.test(tokens[i])) {
                     const num = parseFloat(tokens[i]);
-                    // 偶数索引是 X，奇数是 Y
                     if (consumed % 2 === 1) {
                         out += (ascender - num).toFixed(1) + ' ';
                     } else {
