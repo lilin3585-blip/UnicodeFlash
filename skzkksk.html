@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>赛博字体工厂 - v1.3.5 丝滑版</title>
-    <!-- 锁定 1.3.4 版本 -->
+    <title>赛博字体工厂 - v1.4.0 批量生成版</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -20,7 +19,7 @@
 
         .page-info-bar { display: flex; justify-content: center; align-items: center; font-size: 13px; color: #fff; font-family: monospace; background: #222; padding: 8px; border-radius: 6px; font-weight: bold; flex-shrink: 0;}
 
-        /* 🌟 核心修复：加上 min-height: 0 */
+        /* 核心修复：加上 min-height: 0 */
         .char-panel-wrapper {
             flex: 1;
             min-height: 0; 
@@ -68,6 +67,7 @@
         .btn-save { background-color: #FF9500; color: black; }
         .btn-export { background-color: #FF3B30; color: white; }
         .btn-auto { background-color: #5856D6; color: white; }
+        .btn-nuke { background-color: #AF52DE; color: white; }
         #status { color: #00ff00; font-size: 15px; text-align: center; height: 24px; font-weight: bold; flex-shrink: 0;}
     </style>
 </head>
@@ -103,8 +103,9 @@
         </div>
 
         <div class="actions">
-            <button class="action btn-auto" onclick="autoGenerateCurrentChar()">⚡ 一键生成此字</button>
-            <button class="action btn-save" onclick="saveCurrentChar()">💾 保存此字</button>
+            <button class="action btn-auto" onclick="autoGenerateCurrentPage()">⚡ 生成当前整页</button>
+            <button class="action btn-nuke" onclick="autoGenerateAll()">🤖 全量填满</button>
+            <button class="action btn-save" onclick="saveCurrentChar()">💾 保存</button>
             <button class="action btn-export" onclick="exportFullFont()">🚀 导出 OTF</button>
         </div>
     </div>
@@ -218,7 +219,6 @@
             loadedFonts.push('ImportedFont_' + i);
 
             try {
-                // 深拷贝 buffer 防止被 opentype 锁死
                 const parsed = opentype.parse(buffer.slice(0));
                 parsedFonts.push(parsed);
             } catch (err) {
@@ -344,50 +344,78 @@
         updateCurrentCharData();
     }
 
-    /* ============ 一键从导入字体生成当前字字形 ============ */
-    function autoGenerateCurrentChar() {
-        if (targetChars.length === 0) return;
-        if (parsedFonts.length === 0) {
-            alert('请先导入一个回退字体（TTF/OTF），才能自动生成字形。');
-            return;
-        }
-        const hex = targetChars[currentCharIndex].hex;
-        const char = targetChars[currentCharIndex].char;
-
-        let glyphPath = null;
-        let sourceFont = null;
-
+    // ============ 核心生成逻辑 ============
+    function generatePathForChar(char) {
+        if (parsedFonts.length === 0) return null;
+        
         for (const font of parsedFonts) {
             try {
                 const glyph = font.charToGlyph(char);
                 if (glyph && glyph.path && glyph.path.commands.length > 0 && glyph.index !== 0) {
-                    glyphPath = glyph.path;
-                    sourceFont = font;
-                    break;
+                    const em = font.unitsPerEm || 1000;
+                    const scale = 1000 / em;
+                    const ascender = 800;
+                    return pathToSVGString(glyph.path, scale, ascender);
                 }
-            } catch (err) { /* 继续找下一个 */ }
+            } catch (err) { }
         }
-
-        if (!glyphPath) {
-            statusText.innerText = `❌ 导入字体里没有 U+${hex} 的字形`;
-            return;
-        }
-
-        const em = fontUnitsPerEm(sourceFont);
-        const scale = 1000 / em;
-        const ascender = 800; 
-
-        const pathString = pathToSVGString(glyphPath, scale, ascender);
-
-        clearSVG();
-        glyphDatabase[hex] = [pathString];
-        createSVGPath(pathString);
-        updateCurrentCharData();
-        statusText.innerText = `⚡ 已自动生成 U+${hex} 的字形`;
+        return null;
     }
 
-    function fontUnitsPerEm(font) {
-        return font.unitsPerEm || 1000;
+    // ⚡ 生成当前可见的整页
+    function autoGenerateCurrentPage() {
+        if (parsedFonts.length === 0) return alert('请先导入回退字体！');
+        
+        const startRow = Math.floor(scrollWrapper.scrollTop / ITEM_HEIGHT);
+        const startIndex = Math.max(0, startRow * COLS);
+        
+        let count = 0;
+        for (let i = 0; i < 60; i++) {
+            const index = startIndex + i;
+            if (index >= targetChars.length) break;
+            
+            const item = targetChars[index];
+            if (!glyphDatabase[item.hex] || glyphDatabase[item.hex].length === 0) {
+                const pathStr = generatePathForChar(item.char);
+                if (pathStr) {
+                    glyphDatabase[item.hex] = [pathStr];
+                    count++;
+                }
+            }
+        }
+        
+        renderVisibleItems(startIndex);
+        selectChar(currentCharIndex); // 刷新画板
+        statusText.innerText = `⚡ 已自动生成当前页 ${count} 个字`;
+    }
+
+    // 🤖 生成全部 10 万字
+    function autoGenerateAll() {
+        if (parsedFonts.length === 0) return alert('请先导入回退字体！');
+        if (!confirm("注意：这将会遍历所有 10 万个字，并生成字形数据，页面可能会卡顿几秒钟。确定吗？")) return;
+        
+        statusText.innerText = "🤖 正在全量生成，请稍候...";
+        
+        // 延迟一下让 UI 刷新
+        setTimeout(() => {
+            let count = 0;
+            for (let i = 0; i < targetChars.length; i++) {
+                const item = targetChars[i];
+                // 如果没画过，就自动生成
+                if (!glyphDatabase[item.hex] || glyphDatabase[item.hex].length === 0) {
+                    const pathStr = generatePathForChar(item.char);
+                    if (pathStr) {
+                        glyphDatabase[item.hex] = [pathStr];
+                        count++;
+                    }
+                }
+            }
+            
+            const startRow = Math.floor(scrollWrapper.scrollTop / ITEM_HEIGHT);
+            renderVisibleItems(Math.max(0, startRow * COLS));
+            selectChar(currentCharIndex);
+            statusText.innerText = `🤖 已成功全量生成 ${count} 个字！可直接导出 OTF`;
+        }, 100);
     }
 
     function pathToSVGString(path, scale, ascender) {
@@ -404,7 +432,7 @@
         return d.trim();
     }
 
-    /* ============ 导出：只导出真正画过的字 ============ */
+    // ============ 导出 ============
     function exportFullFont() {
         const customName = document.getElementById('fontName').value || "MegaFont";
         const notdefGlyph = new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 1000, path: new opentype.Path() });
@@ -450,7 +478,6 @@
         }
     }
 
-    // 把 path 字符串中的 Y 坐标翻转：y' = ascender - y
     function transformPathYFlip(d, ascender) {
         const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+/g) || [];
         let out = '';
