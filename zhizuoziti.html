@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>赛博毛笔 - 笔/手切换版</title>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
+    <style>
+        body { background-color: #222; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        
+        /* 阻止 Safari 的双击放大和滚动 */
+        canvas { 
+            background-color: white; 
+            border: 2px solid #555; 
+            touch-action: none; 
+            cursor: crosshair; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        
+        .controls { margin-top: 20px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+        
+        button { 
+            padding: 12px 20px; 
+            font-size: 16px; 
+            background-color: #333; 
+            color: white; 
+            border: 2px solid #555; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        
+        /* 开启仅笔模式的样式 */
+        .pencil-only-active {
+            background-color: #FF9500 !important; 
+            border-color: #FF9500 !important;
+            color: black !important;
+        }
+        
+        .export-btn { background-color: #34C759; border-color: #34C759; color: black; }
+        #status { margin-top: 15px; color: #00ff00; font-size: 14px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h2>Apple Pencil 造字 (带防误触)</h2>
+    <canvas id="drawCanvas" width="512" height="512"></canvas>
+    
+    <div class="controls">
+        <!-- 开关按钮 -->
+        <button id="toggleBtn" class="pencil-only-active" onclick="toggleMode()">✏️ 仅限 Apple Pencil</button>
+        <button onclick="clearCanvas()">🗑️ 清空</button>
+        <button class="export-btn" onclick="exportFont()">✨ 导出 OTF</button>
+    </div>
+    <div id="status">当前模式：仅限 Apple Pencil。用手指划屏幕不会留下痕迹。</div>
+
+    <script>
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = '#000000';
+
+        let isDrawing = false;
+        let paths = []; 
+        let currentPath = [];
+        
+        // 核心开关：默认只允许笔
+        let isPencilOnly = true; 
+
+        // 切换模式
+        function toggleMode() {
+            isPencilOnly = !isPencilOnly;
+            const btn = document.getElementById('toggleBtn');
+            const status = document.getElementById('status');
+            
+            if (isPencilOnly) {
+                btn.className = 'pencil-only-active';
+                btn.innerText = '✏️ 仅限 Apple Pencil';
+                status.innerText = "当前模式：仅限 Apple Pencil。用手划屏幕不会留痕迹。";
+            } else {
+                btn.className = '';
+                btn.innerText = '👆 笔和手指都可以';
+                status.innerText = "当前模式：混合。你可以用笔，也可以用手指画画。";
+            }
+        }
+
+        // 判断当前触摸/点击来源
+        function isInputAllowed(e) {
+            // 如果是鼠标事件（电脑测试）
+            if (e.type.includes('mouse')) return true;
+            
+            // 如果是触摸事件
+            if (e.type.includes('touch')) {
+                const touch = e.touches[0];
+                // 某些老版本 iOS 没有 touchType，所以做兼容
+                // iPadOS 上，Apple Pencil 的 touchType 是 'stylus'，手指是 'direct'
+                if (touch && touch.touchType) {
+                    return isPencilOnly ? touch.touchType === 'stylus' : true;
+                }
+                
+                // 如果是现代 PointerEvent（更准确）
+                if (e.pointerType) {
+                    return isPencilOnly ? e.pointerType === 'pen' : true;
+                }
+            }
+            return true;
+        }
+
+        function startDrawing(e) {
+            if (!isInputAllowed(e)) return; // 如果不符合当前模式，直接拦截！
+            e.preventDefault();
+            isDrawing = true;
+            currentPath = [];
+            
+            const pos = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            currentPath.push({ x: pos.x, y: pos.y });
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            if (!isInputAllowed(e)) return;
+            e.preventDefault();
+            
+            const pos = getPos(e);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            currentPath.push({ x: pos.x, y: pos.y });
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            isDrawing = false;
+            
+            if (currentPath.length > 0) {
+                paths.push([...currentPath]); 
+            }
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) * (canvas.width / rect.width),
+                y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+
+        // 绑定事件 (建议用 PointerEvent，但为了兼容全部写上)
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseleave', stopDrawing);
+
+        canvas.addEventListener('touchstart', startDrawing, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('touchend', stopDrawing, {passive: false});
+        canvas.addEventListener('touchcancel', stopDrawing, {passive: false});
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            paths = [];
+            document.getElementById('status').innerText = "画板已清空。";
+        }
+
+        function exportFont() {
+            if (paths.length === 0) {
+                alert("画板是空的！先画个字吧。");
+                return;
+            }
+
+            document.getElementById('status').innerText = "正在计算矢量路径，生成 OTF...";
+
+            const size = canvas.width; 
+            const fontUnits = 1000;    
+            const scale = fontUnits / size; 
+
+            let fontPath = "";
+
+            paths.forEach(stroke => {
+                if (stroke.length < 2) return;
+                const startX = stroke[0].x * scale;
+                const startY = fontUnits - (stroke[0].y * scale);
+                fontPath += `M ${startX} ${startY} `;
+
+                for (let i = 1; i < stroke.length; i++) {
+                    const x = stroke[i].x * scale;
+                    const y = fontUnits - (stroke[i].y * scale);
+                    fontPath += `L ${x} ${y} `;
+                }
+            });
+
+            const path = new opentype.Path(fontPath);
+            const notdefGlyph = new opentype.Glyph({
+                name: '.notdef', unicode: 0, advanceWidth: fontUnits, path: new opentype.Path()
+            });
+            
+            const myGlyph = new opentype.Glyph({
+                name: 'MyHandwriting', unicode: 0x4E00, advanceWidth: fontUnits, path: path
+            });
+
+            const font = new opentype.Font({
+                familyName: 'MyPencilFont',
+                styleName: 'Regular',
+                unitsPerEm: fontUnits,
+                ascender: 800,
+                descender: -200,
+                glyphs: [notdefGlyph, myGlyph]
+            });
+
+            const buffer = font.toArrayBuffer();
+            const blob = new Blob([buffer], {type: "application/octet-stream"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "MyPencilFont.otf";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            document.getElementById('status').innerText = "OTF 字体已生成！可以安装试试了。";
+        }
+    </script>
+</body>
+</html>
