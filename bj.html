@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>赛博字体工厂 - 导入增强版</title>
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #121212; color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        .app-layout { display: flex; height: 100vh; width: 100vw; }
+        .left-panel {
+            width: 220px;
+            background: #1a1a1a; border-right: 1px solid #333;
+            display: flex; flex-direction: column;
+            padding: 10px; gap: 10px;
+        }
+        .font-name-input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: white; font-size: 14px; }
+        
+        /* 导入按钮样式 */
+        .btn-import { 
+            width: 100%; padding: 10px; background: #34C759; color: white; 
+          
+            border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; 
+        }
+        .btn-import:active { background: #28a745; }
+
+        .page-info-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 12px; color: #aaa; font-family: monospace;
+            background: #222; padding: 8px; border-radius: 6px;
+        }
+        .page-info-bar button { background: #007AFF; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;}
+        .char-panel {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            flex: 1;
+            overflow-y: auto;
+            align-content: start;
+            padding-right: 2px;
+        }
+        .char-btn {
+            background: #333; color: white; border: 2px solid #444; border-radius: 6px;
+            cursor: pointer; text-align: center; font-size: 18px; transition: 0.1s; user-select: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 56px;
+        }
+        .char-btn.active { background: #007AFF; border-color: #007AFF; }
+        .char-btn.done { background: #34C759; border-color: #34C759; color: black; }
+        .char-btn .hex { font-size: 9px; opacity: 0.6; margin-top: 2px; font-family: monospace; }
+        .right-panel {
+            flex: 1;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px; gap: 15px;
+            background: #121212;
+        }
+        .svg-board {
+            background-color: white; border: 2px solid #444; border-radius: 8px;
+            width: 100%; max-width: 450px; aspect-ratio: 1/1;
+            touch-action: none; position: relative;
+        }
+        .drawn-stroke {
+            fill: none; stroke: #000; stroke-width: 14;
+            stroke-linecap: round; stroke-linejoin: round;
+            pointer-events: auto; cursor: pointer;
+        }
+        .drawn-stroke:hover { stroke: #FF3B30; }
+        .actions { display: flex; gap: 10px; width: 100%; max-width: 450px; }
+        button.action { padding: 15px; font-size: 16px; border: none; border-radius: 8px; font-weight: bold; flex: 1; cursor: pointer; transition: 0.2s; }
+        .btn-save { background-color: #FF9500; color: black; }
+        .btn-export { background-color: #FF3B30; color: white; }
+        .btn-export:disabled { background-color: #555; cursor: not-allowed; }
+        #status { color: #00ff00; font-size: 14px; text-align: center; height: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="app-layout">
+    <div class="left-panel">
+        <input type="text" id="fontName" class="font-name-input" value="MyFont_Part1" placeholder="字体名称">
+        
+        <!-- 新增：导入字体功能 -->
+        <input type="file" id="fontUpload" accept=".ttf,.otf" style="display: none;" onchange="handleFontImport(event)">
+        <button class="btn-import" onclick="document.getElementById('fontUpload').click()">📥 导入外部字体</button>
+
+        <div class="page-info-bar">
+            <button onclick="changePage(-1)">⬅️</button>
+            <span id="pageInfo">加载中...</span>
+            <button onclick="changePage(1)">➡️</button>
+        </div>
+        <div class="char-panel" id="charList"></div>
+    </div>
+
+    <div class="right-panel">
+        <div id="status">准备就绪。请点击画错的线条可以删除。</div>
+        <svg id="svgBoard" class="svg-board" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg">
+            <path d="M 500 0 L 500 1000 M 0 500 L 1000 500 M 250 0 L 250 1000 M 750 0 L 750 1000 M 0 250 L 1000 250 M 0 750 L 1000 750" stroke="#eee" stroke-width="2" pointer-events="none"/>
+            <path d="M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z" fill="none" stroke="#ccc" stroke-width="4" pointer-events="none"/>
+        </svg>
+        <div class="actions">
+            <button class="action btn-save" onclick="saveCurrentChar()">💾 保存此字</button>
+            <button class="action btn-export" id="btnExport" onclick="exportFullFont()">🚀 导出 OTF</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const svgBoard = document.getElementById('svgBoard');
+    const charList = document.getElementById('charList');
+    const btnExport = document.getElementById('btnExport');
+    const statusText = document.getElementById('status');
+
+    let isDrawing = false;
+    let targetChars = []; // 当前页面显示的字
+    let allTargetChars = []; // 所有要导出的字
+    let currentCharIndex = 0;
+    let glyphDatabase = {}; 
+    let currentPathString = "";
+    let currentPathEl = null;
+
+    // 分页系统：每页150个字
+    let pages = [];
+    let currentPageIndex = 0;
+    const CHARS_PER_PAGE = 150;
+
+    // 默认的分块范围（常规加载）
+    const defaultBlocks = [
+        { name: "基本拉丁", start: 0x0020, end: 0x00FF },
+        { name: "常用汉字", start: 0x4E00, end: 0x9FFF },
+        { name: "扩展A区", start: 0x3400, end: 0x4DBF },
+        { name: "扩展B区", start: 0x20000, end: 0x2A6DF }
+    ];
+
+    // 初始化分页结构
+    function initPages() {
+        pages = [];
+        let globalIndex = 0;
+        defaultBlocks.forEach(block => {
+            let start = block.start;
+            while (start <= block.end) {
+                let end = Math.min(start + CHARS_PER_PAGE - 1, block.end);
+                pages.push({
+                    type: 'range',
+                    name: block.name,
+                    start: start,
+                    end: end
+                });
+                start = end + 1;
+            }
+        });
+        loadPage(1); // 默认加载常用汉字那一页（索引可能是1）
+    }
+
+    // 💡 新增：导入字体的核心逻辑
+    function handleFontImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        statusText.innerText = "正在解析字体，请稍候...";
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            try {
+                const buffer = e.target.result;
+                const font = opentype.parse(buffer);
+                
+                // 提取字体里所有的 Unicode 字符
+                let importedChars = [];
+                font.glyphs.forEach(glyph => {
+                    if (glyph.unicode !== undefined && glyph.unicode > 0) {
+                        let char = "";
+                        try { char = String.fromCodePoint(glyph.unicode); } catch(err) { return; }
+                        const hex = glyph.unicode.toString(16).toUpperCase().padStart(4, '0');
+                        
+                        // 获取字体的矢量轮廓
+                        let pathData = "";
+                        if (glyph.path && glyph.path.commands.length > 0) {
+                            // opentype.js 的路径坐标通常是 1000 或 2048 单位，这里直接转为 SVG 字符串
+                            pathData = glyph.path.toPathData(1); 
+                        }
+                        
+                        // 保存到数据库
+                        if (pathData) {
+                            glyphDatabase[hex] = [pathData];
+                        }
+                        
+                        importedChars.push({ char: char, hex: hex });
+                    }
+                });
+
+                if (importedChars.length === 0) {
+                    alert("这个字体里没有找到可用的字符！");
+                    return;
+                }
+
+                // 把导入的字自动分页
+                let totalImported = importedChars.length;
+                for (let i = 0; i < totalImported; i += CHARS_PER_PAGE) {
+                    pages.push({
+                        type: 'imported',
+                        name: '导入字体',
+                        chars: importedChars.slice(i, i + CHARS_PER_PAGE)
+                    });
+                }
+
+                alert(`解析成功！共提取 ${totalImported} 个字符。\n已自动追加到分页最后，请翻页查看。`);
+                // 自动跳转到刚导入的第一页
+                loadPage(pages.length - Math.ceil(totalImported / CHARS_PER_PAGE));
+                
+            } catch (err) {
+                console.error(err);
+                alert("解析字体失败，文件可能损坏或格式不支持。");
+                statusText.innerText = "解析失败";
+            }
+        };
+        reader.readAsArrayBuffer(file);
+        // 清空 input 的值，保证下次选同一个文件也能触发
+        event.target.value = ''; 
+    }
+
+    function loadPage(pageIndex) {
+        if (pageIndex < 0 || pageIndex >= pages.length) return;
+        currentPageIndex = pageIndex;
+        const page = pages[currentPageIndex];
+
+        document.getElementById('pageInfo').innerText = `${page.name} ${currentPageIndex + 1}/${pages.length}`;
+
+        targetChars = [];
+        if (page.type === 'range') {
+            for (let code = page.start; code <= page.end; code++) {
+                const hex = code.toString(16).toUpperCase().padStart(4, '0');
+                let char = "";
+                try { char = String.fromCodePoint(code); } catch(e) { char = "?"; }
+                targetChars.push({ char: char, hex: hex });
+            }
+        } else if (page.type === 'imported') {
+            targetChars = page.chars;
+        }
+
+        currentCharIndex = 0;
+        renderCharList();
+        if (targetChars.length > 0) {
+            loadCharToCanvas(targetChars[0].hex);
+        } else {
+            clearSVG();
+        }
+    }
+
+    function changePage(direction) {
+        loadPage(currentPageIndex + direction);
+    }
+
+    function renderCharList() {
+        charList.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+
+        targetChars.forEach((item, index) => {
+            const btn = document.createElement('div');
+            btn.className = 'char-btn';
+            
+            // 如果有数据，标绿
+            if (glyphDatabase[item.hex] && glyphDatabase[item.hex].length > 0) {
+                btn.classList.add('done');
+            }
+            if (index === currentCharIndex) btn.classList.add('active');
+
+            const charSpan = document.createElement('span');
+            charSpan.textContent = item.char;
+
+            const hexSpan = document.createElement('span');
+            hexSpan.className = 'hex';
+            hexSpan.textContent = item.hex;
+
+            btn.appendChild(charSpan);
+            btn.appendChild(hexSpan);
+
+            btn.onclick = () => {
+                currentCharIndex = index;
+                loadCharToCanvas(item.hex);
+                const allBtns = charList.querySelectorAll('.char-btn');
+                allBtns.forEach((b, i) => {
+                    if (i === index) b.classList.add('active');
+                    else b.classList.remove('active');
+                });
+            };
+            fragment.appendChild(btn);
+        });
+
+        charList.appendChild(fragment);
+    }
+
+    function clearSVG() {
+        const strokes = svgBoard.querySelectorAll('.drawn-stroke');
+        strokes.forEach(s => s.remove());
+    }
+
+    function loadCharToCanvas(hex) {
+        clearSVG();
+        const paths = glyphDatabase[hex];
+        if (paths && paths.length > 0) {
+            paths.forEach(pathData => createSVGPath(pathData));
+            statusText.innerText = `加载 ${hex} (已含图形)`;
+        } else {
+            statusText.innerText = `书写 ${hex}`;
+        }
+    }
+
+    function createSVGPath(pathData) {
+        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        pathEl.setAttribute("d", pathData);
+        pathEl.setAttribute("class", "drawn-stroke");
+        pathEl.onclick = (e) => {
+            e.stopPropagation();
+            pathEl.remove();
+            updateCurrentCharData();
+        };
+        svgBoard.appendChild(pathEl);
+        return pathEl;
+    }
+
+    function updateCurrentCharData() {
+        if (targetChars.length === 0) return;
+        const hex = targetChars[currentCharIndex].hex;
+        const paths = Array.from(svgBoard.querySelectorAll('.drawn-stroke')).map(p => p.getAttribute('d'));
+        glyphDatabase[hex] = paths;
+
+        const btns = charList.querySelectorAll('.char-btn');
+        if (btns[currentCharIndex]) {
+            if (paths.length > 0) btns[currentCharIndex].classList.add('done');
+            else btns[currentCharIndex].classList.remove('done');
+        }
+    }
+
+    function getPos(e) {
+        const rect = svgBoard.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: ((clientX - rect.left) / rect.width) * 1000,
+            y: ((clientY - rect.top) / rect.height) * 1000
+        };
+    }
+
+    function startDrawing(e) {
+        if (targetChars.length === 0) return;
+        e.preventDefault();
+        isDrawing = true;
+        const pos = getPos(e);
+        currentPathString = `M ${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
+        currentPathEl = createSVGPath(currentPathString);
+    }
+
+    function draw(e) {
+        if (!isDrawing || !currentPathEl) return;
+        e.preventDefault();
+        const pos = getPos(e);
+        currentPathString += ` L ${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
+        currentPathEl.setAttribute("d", currentPathString);
+    }
+
+    function stopDrawing(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        isDrawing = false;
+        if (currentPathString.length > 5 && targetChars.length > 0) {
+            updateCurrentCharData();
+        }
+        currentPathString = "";
+        currentPathEl = null;
+    }
+
+    svgBoard.addEventListener('mousedown', startDrawing);
+    svgBoard.addEventListener('mousemove', draw);
+    svgBoard.addEventListener('mouseup', stopDrawing);
+    svgBoard.addEventListener('mouseleave', stopDrawing);
+    svgBoard.addEventListener('touchstart', startDrawing, {passive: false});
+    svgBoard.addEventListener('touchmove', draw, {passive: false});
+    svgBoard.addEventListener('touchend', stopDrawing, {passive: false});
+
+    function saveCurrentChar() {
+        if (targetChars.length === 0) return;
+        updateCurrentCharData();
+    }
+
+    // 导出逻辑（全平台防崩溃版）
+    function exportFullFont() {
+        const customName = document.getElementById('fontName').value || "MyCustomFont";
+        
+        // 收集所有已经画了或者导入了的字
+        let exportChars = [];
+        for (let hex in glyphDatabase) {
+            if (glyphDatabase[hex] && glyphDatabase[hex].length > 0) {
+                exportChars.push(hex);
+            }
+        }
+
+        if (exportChars.length === 0) return alert("当前没画字也没有导入字体！");
+
+        btnExport.disabled = true;
+        btnExport.innerText = "处理中...";
+        statusText.innerText = `正在编译 ${exportChars.length} 个字符...`;
+
+        setTimeout(() => {
+            try {
+                const notdefGlyph = new opentype.Glyph({
+                    name: '.notdef', unicode: 0, advanceWidth: 1000, path: new opentype.Path()
+                });
+                const glyphs = [notdefGlyph];
+
+                exportChars.forEach(hex => {
+                    const unicodeVal = parseInt(hex, 16);
+                    const paths = glyphDatabase[hex];
+                    let combinedPathData = paths.join(" ");
+                    
+                    // 如果是导入的带小数点的路径，opentype.js 也能正常识别
+                    const glyph = new opentype.Glyph({
+                        name: `char_${hex}`, unicode: unicodeVal, advanceWidth: 1000,
+                        path: new opentype.Path(combinedPathData)
+                    });
+                    glyphs.push(glyph);
+                });
+
+                const font = new opentype.Font({
+                    familyName: customName, styleName: 'Regular', unitsPerEm: 1000,
+                    ascender: 800, descender: -200, glyphs: glyphs
+                });
+
+                statusText.innerText = "正在打包文件...";
+                const buffer = font.toArrayBuffer();
+                glyphs.length = 0; 
+
+                const blob = new Blob([buffer], {type: "application/octet-stream"});
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement("a");
+                a.href = url; 
+                a.download = `${customName}.otf`;
+                a.style.display = "none";
+                document.body.appendChild(a); 
+                a.click(); 
+                document.body.removeChild(a);
+                
+                setTimeout(() => { URL.revokeObjectURL(url); }, 10000);
+                statusText.innerText = `导出成功！共 ${exportChars.length} 字`;
+                
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = `导出失败，请重试`;
+                alert("编译出错，可能是数据量过大导致内存不足。");
+            } finally {
+                btnExport.disabled = false;
+                btnExport.innerText = "🚀 导出 OTF";
+            }
+        }, 100);
+    }
+
+    // 初始化页面
+    initPages();
+</script>
+</body>
+</html>
