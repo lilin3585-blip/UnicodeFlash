@@ -3,62 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro Vector Font Maker</title>
+    <title>Auto Font Pipeline</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
-        body { background: #1a1a1a; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; margin: 0; }
-        h2 { margin: 10px 0; font-weight: 300; letter-spacing: 2px; }
+        body { background: #121212; color: #fff; font-family: monospace; padding: 20px; display: flex; flex-direction: column; align-items: center; margin: 0; }
+        h2 { margin: 10px 0; font-weight: 300; letter-spacing: 2px; color: #0f0; }
         
-        /* 顶部设置栏 */
-        .top-bar { display: flex; gap: 15px; margin-bottom: 20px; background: #2a2a2a; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); flex-wrap: wrap; justify-content: center; align-items: center; }
-        .top-bar input[type="text"] { background: #111; color: #0f0; border: 1px solid #444; padding: 8px; border-radius: 4px; outline: none; }
+        .top-bar { display: flex; gap: 20px; margin-bottom: 20px; background: #222; padding: 15px 30px; border-radius: 8px; border: 1px solid #333; align-items: center; flex-wrap: wrap; justify-content: center;}
+        .top-bar input[type="text"] { background: #000; color: #0f0; border: 1px solid #0f0; padding: 8px; border-radius: 4px; outline: none; font-family: monospace; width: 150px;}
         .top-bar input[type="range"] { vertical-align: middle; }
         
-        /* 画布容器 */
-        .canvas-container { position: relative; background: #fff; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); overflow: hidden; margin-bottom: 20px; }
+        .canvas-container { position: relative; background: #fff; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
         canvas { display: block; touch-action: none; cursor: crosshair; }
         
-        /* 辅助线系统 */
+        /* 辅助线 */
         .guide { position: absolute; left: 0; width: 100%; pointer-events: none; border-top: 1px solid rgba(0,0,0,0.1); }
-        .guide.baseline { bottom: 50px; border-top: 1px dashed #f00; } /* 基线 */
-        .guide.ascender { bottom: 250px; border-top: 1px dashed #00f; } /* 升部/大写高度 */
-        .guide.center { top: 0; bottom: 0; left: 50%; border-left: 1px dashed rgba(0,0,0,0.1); border-top: none; width: 0; }
+        .guide.baseline { bottom: 50px; border-top: 1px dashed #f00; } 
+        .guide.ascender { bottom: 250px; border-top: 1px dashed #00f; } 
 
-        /* 按钮 */
-        button { background: #007bff; color: #fff; border: none; padding: 10px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; transition: 0.2s; font-weight: bold; }
-        button:hover { background: #0056b3; }
-        button.danger { background: #dc3545; }
-        button.danger:hover { background: #a71d2a; }
-        button.success { background: #28a745; }
-        button.success:hover { background: #1e7e34; }
-        
-        .status { margin-top: 10px; color: #888; font-size: 14px; }
+        .status-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; background: #000; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #0f0; box-sizing: border-box;}
+        .char-info { font-size: 28px; color: #0f0; font-weight: bold; }
+        .hex-info { font-size: 14px; color: #888; }
+
+        button { background: #0f0; color: #000; border: none; padding: 12px 25px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: monospace; margin: 0 10px; transition: 0.2s;}
+        button:hover { background: #fff; box-shadow: 0 0 15px #fff;}
+        button.danger { background: #f00; color: #fff; }
+        button.export { background: #ff0; }
     </style>
 </head>
 <body>
 
-    <h2>FONT FORGE</h2>
+    <h2>[ AUTO FONT PIPELINE ]</h2>
 
     <div class="top-bar">
-        <label>字体名称: <input type="text" id="fontName" value="MyCustomFont"></label>
-        <label>当前字符: <input type="text" id="charInput" value="A" maxlength="2" style="width: 50px; text-align: center;"></label>
-        <label>笔刷粗细: <input type="range" id="brushSize" min="2" max="30" value="6"> <span id="brushSizeVal">6</span>px</label>
+        <label>字体名称: <input type="text" id="fontName" value="MyAutoFont"></label>
+        <label>笔刷粗细: <input type="range" id="brushSize" min="2" max="30" value="8"> <span id="brushSizeVal">8</span>px</label>
+    </div>
+
+    <!-- 字符显示区 -->
+    <div class="status-bar">
+        <div>
+            <div class="char-info" id="displayChar">[ 空白 ]</div>
+            <div class="hex-info" id="displayHex">U+0020 (已保存: 0字)</div>
+        </div>
     </div>
 
     <div class="canvas-container">
         <canvas id="fontCanvas" width="400" height="400"></canvas>
         <div class="guide ascender"></div>
         <div class="guide baseline"></div>
-        <div class="guide center"></div>
     </div>
 
-    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-        <button onclick="saveCurrentChar()">保存当前字符</button>
+    <div>
+        <button onclick="saveAndNext()">保存并切下一个</button>
         <button class="danger" onclick="clearCanvas()">清空画板</button>
-        <button class="success" onclick="exportFont()">⚡ 导出 TTF 字体</button>
+        <button class="export" onclick="exportFont()">⚡ 导出 TTF</button>
     </div>
-
-    <div class="status" id="statusText">等待操作...</div>
 
     <script>
         const canvas = document.getElementById('fontCanvas');
@@ -66,12 +66,25 @@
         let isDrawing = false;
         let currentPath = []; 
         let allPaths = [];    
-        let savedCharacters = {}; // 改为对象，方便根据 Unicode 查重覆盖
+        
+        let savedCharacters = {}; 
+        let currentUnicode = 0x0020; // 默认从 0020（空格）开始
 
         const brushSizeInput = document.getElementById('brushSize');
         const brushSizeVal = document.getElementById('brushSizeVal');
 
-        // 动态更新笔刷粗细
+        function updateDisplay() {
+            const hexStr = currentUnicode.toString(16).toUpperCase().padStart(4, '0');
+            let charStr = String.fromCodePoint(currentUnicode);
+            
+            // 如果是空格或者不可见字符，特殊显示
+            if (currentUnicode === 32) charStr = "[ 空格 ]";
+            else if (currentUnicode < 32 || (currentUnicode >= 127 && currentUnicode <= 160)) charStr = "[ 控制符 ]";
+
+            document.getElementById('displayChar').innerText = charStr;
+            document.getElementById('displayHex').innerText = `U+${hexStr} (已保存: ${Object.keys(savedCharacters).length}字)`;
+        }
+
         brushSizeInput.addEventListener('input', (e) => {
             brushSizeVal.innerText = e.target.value;
         });
@@ -93,11 +106,8 @@
             e.preventDefault();
             if (!isDrawing) return;
             const pos = getPos(e);
-            
-            // 记录坐标点用于导出
             currentPath.push(pos);
             
-            // 实时绘制视觉效果
             ctx.beginPath();
             ctx.moveTo(currentPath[currentPath.length - 2].x, currentPath[currentPath.length - 2].y);
             ctx.lineTo(pos.x, pos.y);
@@ -113,7 +123,6 @@
             if (!isDrawing) return;
             isDrawing = false;
             if (currentPath.length > 1) {
-                // 保存路径数据，并且记录这根线的粗细
                 allPaths.push({ points: currentPath, width: brushSizeInput.value });
             }
             currentPath = [];
@@ -132,27 +141,30 @@
             allPaths = [];
         }
 
-        function saveCurrentChar() {
-            let char = document.getElementById('charInput').value;
-            if (!char) return alert("请输入字符！");
-            if (allPaths.length === 0) return alert("画板是空的！");
-
-            // 如果输入了多个字符，只取第一个
-            char = Array.from(char)[0]; 
-            const unicode = char.codePointAt(0);
+        function saveAndNext() {
+            // 如果画了东西，就保存
+            if (allPaths.length > 0) {
+                savedCharacters[currentUnicode] = JSON.parse(JSON.stringify(allPaths));
+            }
             
-            savedCharacters[unicode] = JSON.parse(JSON.stringify(allPaths));
+            // 自动加 1，切到下一个字符
+            currentUnicode++;
             
-            document.getElementById('statusText').innerText = `字符 "${char}" (U+${unicode.toString(16).toUpperCase()}) 已保存至内存。`;
+            // 如果到了 9FFF 就不加了
+            if (currentUnicode > 0x9FFF) {
+                currentUnicode = 0x9FFF;
+                alert("恭喜通关！你已经画到了 CJK 区最后一个字 9FFF！");
+            }
+            
             clearCanvas();
+            updateDisplay();
         }
 
-        // 🌟 核心大招：将含有粗细（宽度）的轨迹转化为多边形轮廓
         function exportFont() {
             const keys = Object.keys(savedCharacters);
             if (keys.length === 0) return alert("你还没有保存任何字符！");
 
-            const familyName = document.getElementById('fontName').value || 'MyCustomFont';
+            const familyName = document.getElementById('fontName').value || 'MyAutoFont';
             const unitsPerEm = 1000;
             const descender = -200;
             const scale = unitsPerEm / 400; 
@@ -161,63 +173,50 @@
                 new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 600, path: new opentype.Path() })
             ];
 
-            document.getElementById('statusText').innerText = "正在生成字体文件，请稍候...";
+            keys.forEach(unicodeStr => {
+                const unicode = parseInt(unicodeStr);
+                const pathsData = savedCharacters[unicode];
+                const glyphPath = new opentype.Path();
 
-            // 延迟一下让UI刷新
-            setTimeout(() => {
-                keys.forEach(unicodeStr => {
-                    const unicode = parseInt(unicodeStr);
-                    const pathsData = savedCharacters[unicode];
-                    const glyphPath = new opentype.Path();
+                pathsData.forEach(pathObj => {
+                    const points = pathObj.points;
+                    if (points.length < 2) return;
 
-                    pathsData.forEach(pathObj => {
-                        const points = pathObj.points;
-                        const brushWidth = pathObj.width * scale; // 根据画布缩放笔刷粗细
-
-                        if (points.length < 2) return;
-
-                        // 将坐标转换到字体空间
-                        const fontPoints = points.map(p => ({
-                            x: p.x * scale,
-                            y: (canvas.height - p.y) * scale + descender
-                        }));
-
-                        // 简易的轮廓膨胀算法：正反偏移画多边形（为了简化代码，这里用矩形近似，
-                        // 真正的工业级字体需要复杂的贝塞尔曲线拟合，这里保证能导出完整的字形）
-                        
-                        // 我们采用折线连接的方式生成多边形，保留笔刷感
-                        glyphPath.moveTo(fontPoints[0].x, fontPoints[0].y);
-                        for (let i = 1; i < fontPoints.length; i++) {
-                            glyphPath.lineTo(fontPoints[i].x, fontPoints[i].y);
-                        }
-                        
-                        // 这里为了防止黑三角，我们加上半宽度的轮廓（简化的描边算法）
-                        // 实际上要在Opentype里做完美描边非常难，但我们可以用加粗的直线段来表示
-                        glyphPath.close();
-                    });
-
-                    const glyph = new opentype.Glyph({
-                        name: String.fromCodePoint(unicode),
-                        unicode: unicode,
-                        advanceWidth: 800,
-                        path: glyphPath
-                    });
-                    glyphs.push(glyph);
+                    const fontPoints = points.map(p => ({
+                        x: p.x * scale,
+                        y: (canvas.height - p.y) * scale + descender
+                    }));
+                    
+                    glyphPath.moveTo(fontPoints[0].x, fontPoints[0].y);
+                    for (let i = 1; i < fontPoints.length; i++) {
+                        glyphPath.lineTo(fontPoints[i].x, fontPoints[i].y);
+                    }
+                    glyphPath.close(); // 强制闭合，防黑三角
                 });
 
-                const font = new opentype.Font({
-                    familyName: familyName,
-                    styleName: 'Regular',
-                    unitsPerEm: unitsPerEm,
-                    ascender: 800, 
-                    descender: descender, 
-                    glyphs: glyphs
+                const glyph = new opentype.Glyph({
+                    name: String.fromCodePoint(unicode),
+                    unicode: unicode,
+                    advanceWidth: 800,
+                    path: glyphPath
                 });
+                glyphs.push(glyph);
+            });
 
-                font.download();
-                document.getElementById('statusText').innerText = `✅ 生成成功！文件已下载。包含 ${keys.length} 个字符。`;
-            }, 100);
+            const font = new opentype.Font({
+                familyName: familyName,
+                styleName: 'Regular',
+                unitsPerEm: unitsPerEm,
+                ascender: 800, 
+                descender: descender, 
+                glyphs: glyphs
+            });
+
+            font.download();
         }
+
+        // 初始化
+        updateDisplay();
     </script>
 </body>
 </html>
