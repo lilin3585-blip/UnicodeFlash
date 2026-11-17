@@ -16,7 +16,6 @@
         .canvas-container { position: relative; background: #fff; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
         canvas { display: block; touch-action: none; cursor: crosshair; }
         
-        /* 辅助线 */
         .guide { position: absolute; left: 0; width: 100%; pointer-events: none; border-top: 1px solid rgba(0,0,0,0.1); }
         .guide.baseline { bottom: 50px; border-top: 1px dashed #f00; } 
         .guide.ascender { bottom: 250px; border-top: 1px dashed #00f; } 
@@ -29,6 +28,10 @@
         button:hover { background: #fff; box-shadow: 0 0 15px #fff;}
         button.danger { background: #f00; color: #fff; }
         button.export { background: #ff0; }
+
+        .nav-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
+        .nav-bar button { padding: 8px 16px; font-size: 14px; background: #333; color: #0f0; border: 1px solid #0f0; }
+        .nav-bar button:hover { background: #0f0; color: #000; }
     </style>
 </head>
 <body>
@@ -48,6 +51,13 @@
         </div>
     </div>
 
+    <!-- 字符导航 -->
+    <div class="nav-bar">
+        <button onclick="prevChar()">◀ 上一个</button>
+        <button onclick="nextChar()">下一个 ▶</button>
+        <button onclick="jumpToChar()">跳转字符</button>
+    </div>
+
     <div class="canvas-container">
         <canvas id="fontCanvas" width="400" height="400"></canvas>
         <div class="guide ascender"></div>
@@ -57,7 +67,7 @@
     <div>
         <button onclick="saveAndNext()">保存并切下一个</button>
         <button class="danger" onclick="clearCanvas()">清空画板</button>
-        <button class="export" onclick="exportFont()">⚡ 导出 TTF</button>
+        <button class="export" onclick="exportFont()">⚡ 导出 OTF</button>
     </div>
 
     <script>
@@ -66,12 +76,16 @@
         let isDrawing = false;
         let currentPath = []; 
         let allPaths = [];    
-        
+    
         let savedCharacters = {}; 
         let currentUnicode = 0x0020; // 默认从 0020（空格）开始
 
         const brushSizeInput = document.getElementById('brushSize');
         const brushSizeVal = document.getElementById('brushSizeVal');
+
+        // 防止页面滚动/缩放干扰绘图
+        canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
         function updateDisplay() {
             const hexStr = currentUnicode.toString(16).toUpperCase().padStart(4, '0');
@@ -92,21 +106,30 @@
             const rect = canvas.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
+            // 考虑 canvas 可能被 CSS 缩放
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return { 
+                x: (clientX - rect.left) * scaleX, 
+                y: (clientY - rect.top) * scaleY 
+            };
         }
 
         function startDraw(e) {
+            if (e.touches && e.touches.length !== 1) return; // 多指触摸忽略
             e.preventDefault();
             isDrawing = true;
             currentPath = [getPos(e)];
         }
 
         function draw(e) {
-            e.preventDefault();
             if (!isDrawing) return;
+            if (e.touches && e.touches.length !== 1) return;
+            e.preventDefault();
             const pos = getPos(e);
             currentPath.push(pos);
             
+            // 实时预览：直接描线
             ctx.beginPath();
             ctx.moveTo(currentPath[currentPath.length - 2].x, currentPath[currentPath.length - 2].y);
             ctx.lineTo(pos.x, pos.y);
@@ -118,11 +141,11 @@
         }
 
         function stopDraw(e) {
-            e.preventDefault();
             if (!isDrawing) return;
+            e.preventDefault();
             isDrawing = false;
             if (currentPath.length > 1) {
-                allPaths.push({ points: currentPath, width: brushSizeInput.value });
+                allPaths.push({ points: currentPath.slice(), width: parseFloat(brushSizeInput.value) });
             }
             currentPath = [];
         }
@@ -134,29 +157,125 @@
         canvas.addEventListener('touchstart', startDraw, {passive: false});
         canvas.addEventListener('touchmove', draw, {passive: false});
         canvas.addEventListener('touchend', stopDraw, {passive: false});
+        canvas.addEventListener('touchcancel', stopDraw, {passive: false});
 
         function clearCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             allPaths = [];
+            // 若当前字符已保存，清空画板不应删除已保存数据，只是重新绘制
+            if (savedCharacters[currentUnicode]) {
+                // 重新绘制已保存的路径
+                savedCharacters[currentUnicode].forEach(pathObj => {
+                    const points = pathObj.points;
+                    ctx.beginPath();
+                    ctx.moveTo(points[0].x, points[0].y);
+                    for (let i = 1; i < points.length; i++) {
+                        ctx.lineTo(points[i].x, points[i].y);
+                    }
+                    ctx.lineWidth = pathObj.width;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.strokeStyle = '#000';
+                    ctx.stroke();
+                });
+                allPaths = JSON.parse(JSON.stringify(savedCharacters[currentUnicode]));
+            }
+        }
+
+        function saveCurrent() {
+            if (allPaths.length > 0) {
+                savedCharacters[currentUnicode] = JSON.parse(JSON.stringify(allPaths));
+            } else {
+                // 如果清空了所有路径，则删除该字符的保存
+                delete savedCharacters[currentUnicode];
+            }
         }
 
         function saveAndNext() {
-            if (allPaths.length > 0) {
-                savedCharacters[currentUnicode] = JSON.parse(JSON.stringify(allPaths));
-            }
-            
+            saveCurrent();
             currentUnicode++;
             if (currentUnicode > 0x9FFF) {
                 currentUnicode = 0x9FFF;
                 alert("恭喜通关！你已经画到了 CJK 区最后一个字 9FFF！");
             }
-            
-            clearCanvas();
+            clearCanvasAndLoad(currentUnicode);
             updateDisplay();
         }
 
-        // 🚀 终极核心：将线变空心轮廓！
+        function prevChar() {
+            saveCurrent();
+            currentUnicode--;
+            if (currentUnicode < 0) currentUnicode = 0;
+            clearCanvasAndLoad(currentUnicode);
+            updateDisplay();
+        }
+
+        function nextChar() {
+            saveCurrent();
+            currentUnicode++;
+            if (currentUnicode > 0x9FFF) {
+                currentUnicode = 0x9FFF;
+                alert("已经是最后一个字符了！");
+            }
+            clearCanvasAndLoad(currentUnicode);
+            updateDisplay();
+        }
+
+        function jumpToChar() {
+            const input = prompt("请输入字符或 Unicode 码位（如：A 或 U+0041 或 65）:");
+            if (!input) return;
+            
+            let targetUnicode = null;
+            const trimmed = input.trim();
+            
+            if (trimmed.startsWith('U+') || trimmed.startsWith('u+')) {
+                targetUnicode = parseInt(trimmed.substring(2), 16);
+            } else if (trimmed.length === 1) {
+                targetUnicode = trimmed.codePointAt(0);
+            } else if (/^\d+$/.test(trimmed)) {
+                targetUnicode = parseInt(trimmed, 10);
+            }
+            
+            if (targetUnicode === null || isNaN(targetUnicode) || targetUnicode < 0 || targetUnicode > 0x10FFFF) {
+                alert("无效的字符或码位！");
+                return;
+            }
+            
+            saveCurrent();
+            currentUnicode = targetUnicode;
+            clearCanvasAndLoad(currentUnicode);
+            updateDisplay();
+        }
+
+        function clearCanvasAndLoad(unicode) {
+            // 清空画板
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            allPaths = [];
+            
+            // 如果该字符已保存，加载并绘制
+            if (savedCharacters[unicode]) {
+                allPaths = JSON.parse(JSON.stringify(savedCharacters[unicode]));
+                allPaths.forEach(pathObj => {
+                    const points = pathObj.points;
+                    if (points.length < 2) return;
+                    ctx.beginPath();
+                    ctx.moveTo(points[0].x, points[0].y);
+                    for (let i = 1; i < points.length; i++) {
+                        ctx.lineTo(points[i].x, points[i].y);
+                    }
+                    ctx.lineWidth = pathObj.width;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.strokeStyle = '#000';
+                    ctx.stroke();
+                });
+            }
+        }
+
+        // 🚀 将线变空心轮廓，导出 OTF
         function exportFont() {
+            saveCurrent(); // 保存当前正在画的字
+            
             const keys = Object.keys(savedCharacters);
             if (keys.length === 0) return alert("你还没有保存任何字符！");
 
@@ -164,7 +283,7 @@
             const unitsPerEm = 1000;
             const descender = -200;
             const scale = unitsPerEm / 400; 
-            // 把画布的笔刷粗细映射到字体的单位（假设 1 画布像素 = 1.5 字体单位）
+            // 把画布的笔刷粗细映射到字体的单位
             const brushScale = 1.5;
 
             const glyphs = [
@@ -178,10 +297,10 @@
 
                 pathsData.forEach(pathObj => {
                     const points = pathObj.points;
-                    const brushW = parseFloat(pathObj.width) * brushScale; // 真正的线宽
+                    const brushW = parseFloat(pathObj.width) * brushScale;
                     if (points.length < 2) return;
 
-                    // 沿着你的画线轨迹，撒下一个个小空心方块
+                    // 沿着轨迹撒下小方块（外圈 + 内圈挖空）
                     for (let i = 1; i < points.length; i++) {
                         const p1 = points[i-1];
                         const p2 = points[i];
@@ -190,7 +309,6 @@
                         const dy = p2.y - p1.y;
                         const dist = Math.sqrt(dx*dx + dy*dy);
                         
-                        // 根据距离计算需要插值多少个方块（方块越密，线越连续）
                         const steps = Math.max(1, Math.floor(dist / (brushW / 2.5)));
                         
                         for (let s = 0; s < steps; s++) {
@@ -198,22 +316,21 @@
                             const cx = p1.x + dx * t;
                             const cy = p1.y + dy * t;
                             
-                            // 把坐标转换到字体空间 (Y轴反转)
+                            // 坐标转换到字体空间 (Y轴反转)
                             const fx = cx * scale;
                             const fy = (canvas.height - cy) * scale + descender;
                             
                             const half = brushW / 2;
-                            // 挖空的比例（如果你觉得不够空，可以把 0.5 改小；太细了改大）
                             const innerHalf = half * 0.5; 
 
-                            // 1. 画外圈方块
+                            // 外圈方块（顺时针）
                             glyphPath.moveTo(fx - half, fy - half);
                             glyphPath.lineTo(fx + half, fy - half);
                             glyphPath.lineTo(fx + half, fy + half);
                             glyphPath.lineTo(fx - half, fy + half);
                             glyphPath.close();
                             
-                            // 2. 画内圈方块（反向绘制，实现挖空）
+                            // 内圈方块（逆时针，用于挖空）
                             glyphPath.moveTo(fx - innerHalf, fy - innerHalf);
                             glyphPath.lineTo(fx - innerHalf, fy + innerHalf);
                             glyphPath.lineTo(fx + innerHalf, fy + innerHalf);
@@ -241,7 +358,8 @@
                 glyphs: glyphs
             });
 
-            font.download();
+            // 改为导出 OTF 格式
+            font.download({ filename: familyName + '.otf' });
         }
 
         // 初始化
