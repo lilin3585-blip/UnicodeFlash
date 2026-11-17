@@ -3,206 +3,214 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro Vector Font Maker</title>
+    <title>Pixel Font Maker</title>
     <!-- 引入 opentype.js -->
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
-        body { background: #121212; color: #eee; font-family: monospace; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .header { margin-bottom: 20px; text-align: center; }
-        .canvas-container { position: relative; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-        canvas { display: block; border-radius: 8px; touch-action: none; /* 防止iPad滑动页面 */ }
-        
-        /* 辅助线（基线、字高） */
-        .guide { position: absolute; left: 0; width: 100%; pointer-events: none; border-top: 1px dashed #ccc; }
-        .guide.baseline { bottom: 50px; border-color: #f00; }
-        .guide.x-height { bottom: 150px; border-color: #00f; }
-        .guide.ascender { bottom: 250px; border-color: #0a0; }
-
-        .controls { margin-top: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; justify-content: center; }
-        input { background: #333; color: #0f0; border: 1px solid #0f0; padding: 8px; width: 40px; text-align: center; font-size: 18px; font-family: monospace; }
-        button { background: #0f0; color: #000; border: none; padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        body { background: #1e1e1e; color: #fff; font-family: monospace; text-align: center; padding: 20px; user-select: none; }
+        canvas { background: #fff; border: 2px solid #555; border-radius: 4px; margin-top: 20px; touch-action: none; cursor: crosshair; }
+        .controls { margin-top: 20px; display: flex; gap: 15px; justify-content: center; align-items: center; flex-wrap: wrap; }
+        input { background: #333; color: #0f0; border: 1px solid #0f0; padding: 10px; width: 50px; text-align: center; font-size: 20px; text-transform: uppercase; }
+        button { padding: 10px 20px; font-size: 16px; background: #0f0; color: #000; border: none; cursor: pointer; font-weight: bold; border-radius: 4px; }
         button:hover { background: #0a0; }
         button.danger { background: #f00; color: #fff; }
-        button.danger:hover { background: #a00; }
+        button.export { background: #ff0; color: #000; }
+        .info { color: #888; font-size: 14px; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <h2>[ VECTOR FONT MAKER ]</h2>
-        <p style="color: #888; font-size: 12px;">沿着辅助线画出你的字形</p>
-    </div>
-
-    <div class="canvas-container">
-        <canvas id="fontCanvas" width="400" height="400"></canvas>
-        <!-- 画布覆盖的辅助线，方便定位 -->
-        <div class="guide ascender"></div>
-        <div class="guide x-height"></div>
-        <div class="guide baseline"></div>
-    </div>
+    <h2>[ PIXEL FONT MAKER v1.0 ]</h2>
+    <div class="info">直接在格子上点击（或滑动）即可画字</div>
+    
+    <canvas id="gridCanvas" width="300" height="300"></canvas>
 
     <div class="controls">
-        <label style="color: #aaa;">映射字符: <input type="text" id="charInput" value="A" maxlength="1"></label>
-        <button onclick="saveCurrentChar()">保存当前字符</button>
-        <button onclick="clearCanvas()" class="danger">清空画板</button>
-        <button onclick="exportFont()" style="background: #ff0;">⚡ 导出 TTF 字体</button>
+        <label>当前字符: <input type="text" id="charInput" value="A" maxlength="1"></label>
+        <button onclick="saveChar()">保存当前字符</button>
+        <button class="danger" onclick="clearGrid()">清空画板</button>
+        <button class="export" onclick="exportFont()">⚡ 导出 TTF 字体</button>
     </div>
 
     <script>
-        const canvas = document.getElementById('fontCanvas');
+        const canvas = document.getElementById('gridCanvas');
         const ctx = canvas.getContext('2d');
+        
+        // 定义网格：15x15 (适合画英文字母，想做中文可以改成 24x24)
+        const gridSize = 15; 
+        const cellSize = canvas.width / gridSize;
+        
+        // 初始化网格数据（0 表示空，1 表示有像素）
+        let gridData = Array(gridSize).fill().map(() => Array(gridSize).fill(0));
+        
+        // 存放已保存的字符
+        let savedChars = {}; 
+
+        // 绘制网格
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    // 填充颜色
+                    ctx.fillStyle = gridData[y][x] ? '#000' : '#fff';
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    
+                    // 画辅助线
+                    ctx.strokeStyle = '#eee';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+
+        // 鼠标/触摸滑动绘制
         let isDrawing = false;
-        let currentPath = []; // 当前正在画的笔画
-        let allPaths = [];    // 当前这个字符的所有笔画
-        let savedCharacters = []; // 保存的字符数据 { unicode: xxx, paths: [...] }
+        let drawMode = 1; // 1是画，0是擦除
 
-        // 设置画笔样式
-        ctx.lineWidth = 6;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = '#000';
-
-        // 触摸和鼠标事件统一处理
-        function getPos(e) {
+        function handlePointer(e) {
+            if (!isDrawing) return;
             const rect = canvas.getBoundingClientRect();
+            
+            // 兼容鼠标和触摸
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
-        }
 
-        function startDraw(e) {
-            e.preventDefault();
-            isDrawing = true;
-            currentPath = [getPos(e)];
-        }
+            const x = Math.floor((clientX - rect.left) / cellSize);
+            const y = Math.floor((clientY - rect.top) / cellSize);
 
-        function draw(e) {
-            e.preventDefault();
-            if (!isDrawing) return;
-            const pos = getPos(e);
-            currentPath.push(pos);
-            
-            // 实时刻画
-            ctx.beginPath();
-            ctx.moveTo(currentPath[currentPath.length - 2].x, currentPath[currentPath.length - 2].y);
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-        }
-
-        function stopDraw(e) {
-            e.preventDefault();
-            if (!isDrawing) return;
-            isDrawing = false;
-            if (currentPath.length > 1) {
-                allPaths.push(currentPath);
+            if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+                gridData[y][x] = drawMode;
+                drawGrid();
             }
-            currentPath = [];
         }
 
         // 绑定事件
-        canvas.addEventListener('mousedown', startDraw);
-        canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('mouseup', stopDraw);
-        canvas.addEventListener('mouseout', stopDraw);
-        canvas.addEventListener('touchstart', startDraw, {passive: false});
-        canvas.addEventListener('touchmove', draw, {passive: false});
-        canvas.addEventListener('touchend', stopDraw, {passive: false});
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / cellSize);
+            const y = Math.floor((e.clientY - rect.top) / cellSize);
+            // 判断当前点的是亮的还是暗的，决定接下来是画还是擦
+            if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+                drawMode = gridData[y][x] ? 0 : 1;
+            }
+            handlePointer(e);
+        });
+
+        canvas.addEventListener('mousemove', handlePointer);
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+        // 触摸屏支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDrawing = true;
+            handlePointer(e);
+        }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handlePointer(e);
+        }, {passive: false});
+        canvas.addEventListener('touchend', () => isDrawing = false);
 
         // 清空画板
-        function clearCanvas() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            allPaths = [];
+        function clearGrid() {
+            gridData = Array(gridSize).fill().map(() => Array(gridSize).fill(0));
+            drawGrid();
         }
 
-        // 保存当前画好的字符
-        function saveCurrentChar() {
-            const char = document.getElementById('charInput').value;
-            if (!char) return alert("请输入要映射的字符！");
-            if (allPaths.length === 0) return alert("画板是空的！");
-
-            const unicode = char.charCodeAt(0);
+        // 保存当前字符
+        function saveChar() {
+            const char = document.getElementById('charInput').value.toUpperCase();
+            if (!char) return alert("请输入要保存的字符！");
             
-            // 检查是否已经保存过这个字符，有则覆盖
-            const existingIndex = savedCharacters.findIndex(c => c.unicode === unicode);
-            const charData = { unicode: unicode, paths: JSON.parse(JSON.stringify(allPaths)) };
+            savedChars[char] = JSON.parse(JSON.stringify(gridData)); // 深拷贝
+            alert(`字符 "${char}" 已保存！`);
             
-            if (existingIndex > -1) {
-                savedCharacters[existingIndex] = charData;
-            } else {
-                savedCharacters.push(charData);
+            // 自动跳到下一个字符（方便连续画画）
+            if (char < 'Z') {
+                document.getElementById('charInput').value = String.fromCharCode(char.charCodeAt(0) + 1);
             }
-            
-            alert(`字符 "${char}" 已成功录入内存！`);
-            clearCanvas();
-            
-            // 自动切到下一个字母（可选）
-            document.getElementById('charInput').value = String.fromCharCode(unicode + 1);
+            clearGrid();
         }
 
-        // 🌟 终极核心：将 Canvas 坐标转换成 Opentype 路径并导出
+        // 🚀 终极核心：导出字体
         function exportFont() {
-            if (savedCharacters.length === 0) return alert("你还没有保存任何字符！");
+            if (Object.keys(savedChars).length === 0) {
+                return alert("你还没有保存任何字符！");
+            }
 
-            // 字体单位参数 (通常 1000 是标准)
-            const unitsPerEm = 1000;
+            // 字体基础参数
+            const unitsPerEm = 1000; 
+            const ascender = 800;
             const descender = -200;
             
-            // 画布高度是 400。我们需要把画布坐标映射到字体坐标。
-            // 画布的 Y 轴是向下的，字体的 Y 轴是向上的。
-            // 画布底部 (y=400) 映射到字体的 baseline (y=0 附近)。
-            const scale = unitsPerEm / 400; 
+            // 缩放比例：网格是 15x15，映射到 1000 的字体单位
+            // 假设我们留一点边距，每个格子占 60 单位
+            const unitSize = 60; 
+            const offsetX = 100; // 左边距
+            const offsetY = 100; // 底边距
 
-            const glyphs = [
-                // 必须包含的 .notdef 字符
-                new opentype.Glyph({
-                    name: '.notdef',
-                    unicode: 0,
-                    advanceWidth: 600,
-                    path: new opentype.Path()
-                })
-            ];
+            const glyphs = [];
 
-            savedCharacters.forEach(charData => {
+            // 1. 添加必需的 .notdef 字形（空）
+            glyphs.push(new opentype.Glyph({
+                name: '.notdef',
+                unicode: 0,
+                advanceWidth: gridSize * unitSize + offsetX * 2,
+                path: new opentype.Path()
+            }));
+
+            // 2. 遍历保存的字符，把像素块转成方块轮廓
+            for (const char in savedChars) {
+                const unicode = char.charCodeAt(0);
+                const data = savedChars[char];
                 const glyphPath = new opentype.Path();
 
-                charData.paths.forEach(pathPoints => {
-                    if (pathPoints.length < 2) return;
-                    
-                    // 转换起点
-                    let startX = pathPoints[0].x * scale;
-                    let startY = (canvas.height - pathPoints[0].y) * scale + descender; 
-                    
-                    glyphPath.moveTo(startX, startY);
+                for (let y = 0; y < gridSize; y++) {
+                    for (let x = 0; x < gridSize; x++) {
+                        if (data[y][x] === 1) {
+                            // 计算这个格子在字体坐标系里的位置
+                            // 注意：Canvas的Y轴是向下的，字体Y轴是向上的
+                            const fontX = offsetX + x * unitSize;
+                            const fontY = offsetY + (gridSize - 1 - y) * unitSize;
 
-                    for (let i = 1; i < pathPoints.length; i++) {
-                        let pX = pathPoints[i].x * scale;
-                        let pY = (canvas.height - pathPoints[i].y) * scale + descender;
-                        glyphPath.lineTo(pX, pY);
+                            // 画一个正方形封闭路径
+                            glyphPath.moveTo(fontX, fontY);
+                            glyphPath.lineTo(fontX + unitSize, fontY);
+                            glyphPath.lineTo(fontX + unitSize, fontY + unitSize);
+                            glyphPath.lineTo(fontX, fontY + unitSize);
+                            glyphPath.close();
+                        }
                     }
-                });
+                }
 
+                // 组装单个字形
                 const glyph = new opentype.Glyph({
-                    name: String.fromCharCode(charData.unicode),
-                    unicode: charData.unicode,
-                    advanceWidth: 800, // 每个字的宽度
+                    name: char,
+                    unicode: unicode,
+                    advanceWidth: gridSize * unitSize + offsetX * 2, // 字宽
                     path: glyphPath
                 });
                 glyphs.push(glyph);
-            });
+            }
 
-            // 组装字体
+            // 3. 生成并下载字体文件
             const font = new opentype.Font({
-                familyName: 'MyCustomVectorFont',
+                familyName: 'MyPixelFont',
                 styleName: 'Regular',
                 unitsPerEm: unitsPerEm,
-                ascender: 800,
+                ascender: ascender,
                 descender: descender,
                 glyphs: glyphs
             });
 
-            // 下载
             font.download();
+            alert("字体生成成功！快去下载里看看 .ttf 文件。");
         }
+
+        // 初始化画布
+        drawGrid();
     </script>
 </body>
 </html>
