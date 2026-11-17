@@ -77,7 +77,6 @@
             const hexStr = currentUnicode.toString(16).toUpperCase().padStart(4, '0');
             let charStr = String.fromCodePoint(currentUnicode);
             
-            // 如果是空格或者不可见字符，特殊显示
             if (currentUnicode === 32) charStr = "[ 空格 ]";
             else if (currentUnicode < 32 || (currentUnicode >= 127 && currentUnicode <= 160)) charStr = "[ 控制符 ]";
 
@@ -142,15 +141,11 @@
         }
 
         function saveAndNext() {
-            // 如果画了东西，就保存
             if (allPaths.length > 0) {
                 savedCharacters[currentUnicode] = JSON.parse(JSON.stringify(allPaths));
             }
             
-            // 自动加 1，切到下一个字符
             currentUnicode++;
-            
-            // 如果到了 9FFF 就不加了
             if (currentUnicode > 0x9FFF) {
                 currentUnicode = 0x9FFF;
                 alert("恭喜通关！你已经画到了 CJK 区最后一个字 9FFF！");
@@ -160,6 +155,7 @@
             updateDisplay();
         }
 
+        // 🚀 终极核心：将线变空心轮廓！
         function exportFont() {
             const keys = Object.keys(savedCharacters);
             if (keys.length === 0) return alert("你还没有保存任何字符！");
@@ -168,6 +164,8 @@
             const unitsPerEm = 1000;
             const descender = -200;
             const scale = unitsPerEm / 400; 
+            // 把画布的笔刷粗细映射到字体的单位（假设 1 画布像素 = 1.5 字体单位）
+            const brushScale = 1.5;
 
             const glyphs = [
                 new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 600, path: new opentype.Path() })
@@ -180,18 +178,49 @@
 
                 pathsData.forEach(pathObj => {
                     const points = pathObj.points;
+                    const brushW = parseFloat(pathObj.width) * brushScale; // 真正的线宽
                     if (points.length < 2) return;
 
-                    const fontPoints = points.map(p => ({
-                        x: p.x * scale,
-                        y: (canvas.height - p.y) * scale + descender
-                    }));
-                    
-                    glyphPath.moveTo(fontPoints[0].x, fontPoints[0].y);
-                    for (let i = 1; i < fontPoints.length; i++) {
-                        glyphPath.lineTo(fontPoints[i].x, fontPoints[i].y);
+                    // 沿着你的画线轨迹，撒下一个个小空心方块
+                    for (let i = 1; i < points.length; i++) {
+                        const p1 = points[i-1];
+                        const p2 = points[i];
+                        
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        
+                        // 根据距离计算需要插值多少个方块（方块越密，线越连续）
+                        const steps = Math.max(1, Math.floor(dist / (brushW / 2.5)));
+                        
+                        for (let s = 0; s < steps; s++) {
+                            const t = s / steps;
+                            const cx = p1.x + dx * t;
+                            const cy = p1.y + dy * t;
+                            
+                            // 把坐标转换到字体空间 (Y轴反转)
+                            const fx = cx * scale;
+                            const fy = (canvas.height - cy) * scale + descender;
+                            
+                            const half = brushW / 2;
+                            // 挖空的比例（如果你觉得不够空，可以把 0.5 改小；太细了改大）
+                            const innerHalf = half * 0.5; 
+
+                            // 1. 画外圈方块
+                            glyphPath.moveTo(fx - half, fy - half);
+                            glyphPath.lineTo(fx + half, fy - half);
+                            glyphPath.lineTo(fx + half, fy + half);
+                            glyphPath.lineTo(fx - half, fy + half);
+                            glyphPath.close();
+                            
+                            // 2. 画内圈方块（反向绘制，实现挖空）
+                            glyphPath.moveTo(fx - innerHalf, fy - innerHalf);
+                            glyphPath.lineTo(fx - innerHalf, fy + innerHalf);
+                            glyphPath.lineTo(fx + innerHalf, fy + innerHalf);
+                            glyphPath.lineTo(fx + innerHalf, fy - innerHalf);
+                            glyphPath.close();
+                        }
                     }
-                    glyphPath.close(); // 强制闭合，防黑三角
                 });
 
                 const glyph = new opentype.Glyph({
