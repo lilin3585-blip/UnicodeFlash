@@ -1,0 +1,606 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FontMaker</title>
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:16px;background:#101722;
+ color:#edf3fa;font-family:system-ui,sans-serif
+}
+h1{color:#83c1ff}
+.panel{
+ background:#202c3d;border:1px solid #354960;
+ padding:15px;border-radius:14px;margin:12px 0
+}
+label{display:block;margin:12px 0 6px}
+input,select,button{
+ width:100%;padding:11px;border-radius:8px;
+ border:1px solid #53667b;background:#111c2a;
+ color:white;font-size:15px
+}
+button{
+ background:#287bd5;border:0;margin-top:9px;
+ font-weight:bold
+}
+button:disabled{opacity:.4}
+.small{font-size:12px;color:#a9bacd}
+.progress{
+ height:9px;background:#394b60;
+ border-radius:20px;overflow:hidden;margin:10px 0
+}
+.progress div{height:100%;width:0;background:#55b1ff}
+.repo{
+ background:#152235;border-radius:9px;
+ padding:11px;margin:7px 0;overflow-wrap:anywhere
+}
+.repo button{margin-top:7px}
+.status{
+ white-space:pre-wrap;background:#101923;
+ padding:11px;border-radius:8px;
+ font-size:13px;overflow-wrap:anywhere
+}
+</style>
+</head>
+<body>
+
+<h1>SuperHan Font Maker</h1>
+<p class="small">Ultimate 1000 · GitHub 自动字体发现与合并</p>
+
+<div class="panel">
+<h3>① 字体设置</h3>
+<label>字体名称</label>
+<input id="fontName" value="SuperHan">
+
+<label>字体类别</label>
+<select id="category">
+<option value="all">全部类别</option>
+<option value="sans">黑体</option>
+<option value="serif">宋体</option>
+<option value="mincho">明朝体</option>
+<option value="kai">楷体</option>
+<option value="rounded">圆体</option>
+</select>
+
+<label>搜索语言</label>
+<select id="language">
+<option value="all">全部语言</option>
+<option value="zh">中文</option>
+<option value="ja">日文</option>
+<option value="ko">韩文</option>
+</select>
+
+<p class="small">
+自动搜索目标：1000 个不同 GitHub 仓库。
+无需填写数量。
+</p>
+
+<button onclick="startSearch()" id="searchBtn">
+开始自动搜索 1000 个仓库
+</button>
+
+<div class="progress"><div id="searchProgress"></div></div>
+<div id="searchStatus" class="status">等待搜索</div>
+</div>
+
+<div class="panel">
+<h3>② GitHub 仓库</h3>
+<p class="small">搜索到的仓库会自动去重。</p>
+<div id="repoList"></div>
+<button onclick="scanAll()" id="scanBtn" disabled>
+扫描全部已发现仓库
+</button>
+</div>
+
+<div class="panel">
+<h3>③ 字体资源</h3>
+<div id="fontList"></div>
+<button onclick="downloadSelected()" id="downloadBtn" disabled>
+下载所有选中的字体
+</button>
+<p class="small">只下载 TTF / OTF，避免一次下载全部仓库。</p>
+</div>
+
+<div class="panel">
+<h3>④ Unicode 范围</h3>
+
+<label>起始码位</label>
+<input id="start" value="4E00">
+
+<label>结束码位</label>
+<input id="end" value="9FFF">
+
+<label>最大字符数（0 = 不限制）</label>
+<input id="limit" type="number" value="0">
+
+<p class="small">
+支持 BMP、补充平面和私人使用区。
+</p>
+</div>
+
+<div class="panel">
+<h3>⑤ 字形合并</h3>
+<label>缺字处理</label>
+<select id="missing">
+<option value="skip">跳过缺失字符</option>
+</select>
+
+<button onclick="buildFont()" id="buildBtn">
+开始生成字体
+</button>
+<div class="progress"><div id="buildProgress"></div></div>
+<div id="buildStatus" class="status">等待生成</div>
+</div>
+
+<div class="panel">
+<h3>⑥ 导出字体</h3>
+<button onclick="exportFont()" id="exportBtn" disabled>
+导出 TTF
+</button>
+</div>
+
+<div class="panel">
+<h3>⑦ 日志</h3>
+<div id="log" class="status">程序已启动。</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+
+const TARGET=1000;
+const PER_PAGE=100;
+
+let repos=new Map();
+let fontFiles=[];
+let loadedFonts=[];
+let outputFont=null;
+
+const queries={
+ all:["font","typeface","CJK font","Unicode font",
+ "Chinese font","Japanese font","Korean font",
+ "Han font","OpenType font","TrueType font"],
+ sans:["Chinese sans font","CJK sans typeface",
+ "Han sans font"],
+ serif:["Chinese serif font","CJK serif typeface",
+ "Han serif font"],
+ mincho:["Japanese Mincho font","CJK Mincho"],
+ kai:["Chinese Kai font","Kaiti font"],
+ rounded:["Chinese rounded font","CJK rounded font"]
+};
+
+function message(s){
+ $("log").textContent=s;
+}
+
+function wait(){
+ return new Promise(r=>setTimeout(r,0));
+}
+
+async function github(url){
+ const res=await fetch(url,{
+  headers:{"Accept":"application/vnd.github+json"}
+ });
+ if(!res.ok)throw Error("GitHub API "+res.status);
+ return res.json();
+}
+
+function updateSearch(){
+ $("searchProgress").style.width=
+ Math.min(100,repos.size/TARGET*100)+"%";
+ $("searchStatus").textContent=
+ "已发现仓库："+repos.size+
+ " / "+TARGET+
+ "\n搜索结果自动去重。";
+}
+
+async function startSearch(){
+ repos.clear();
+ $("repoList").innerHTML="";
+ $("fontList").innerHTML="";
+ fontFiles=[];
+ loadedFonts=[];
+ outputFont=null;
+ $("exportBtn").disabled=true;
+
+ const category=$("category").value;
+ const qs=queries[category];
+ const language=$("language").value;
+
+ $("searchBtn").disabled=true;
+ $("searchStatus").textContent="开始搜索……";
+
+ let requestCount=0;
+ let errors=[];
+
+ try{
+  for(const query of qs){
+   if(repos.size>=TARGET)break;
+
+   for(let page=1;page<=10;page++){
+    if(repos.size>=TARGET)break;
+
+    const q=encodeURIComponent(
+     query+" in:name,description"+
+     (language==="zh"?" language:Chinese":
+      language==="ja"?" language:Japanese":
+      language==="ko"?" language:Korean":"")
+    );
+
+    const url=
+     "https://api.github.com/search/repositories"+
+     "?q="+q+
+     "&sort=stars&order=desc"+
+     "&per_page="+PER_PAGE+
+     "&page="+page;
+
+    try{
+     const data=await github(url);
+     requestCount++;
+
+     if(!data.items||!data.items.length)break;
+
+     for(const repo of data.items){
+      repos.set(repo.full_name,repo);
+      if(repos.size>=TARGET)break;
+     }
+
+     updateSearch();
+     renderRepos();
+
+    }catch(e){
+     errors.push(query+" 第"+page+"页："+e.message);
+     if(e.message.includes("403")||
+        e.message.includes("429")){
+      throw e;
+     }
+     break;
+    }
+
+    await wait();
+   }
+  }
+
+  $("searchStatus").textContent=
+   "搜索结束。\n"+
+   "发现不同仓库："+repos.size+
+   "\nAPI请求次数："+requestCount+
+   "\n目标数量："+TARGET+
+   (repos.size<TARGET?
+    "\n未达到目标：可能是搜索结果不足或API限制。":"");
+
+  $("scanBtn").disabled=repos.size===0;
+
+ }catch(e){
+  $("searchStatus").textContent=
+   "搜索中断："+e.message+
+   "\n已收集仓库："+repos.size+
+   "\n可能触发 GitHub API 速率限制。";
+  $("scanBtn").disabled=repos.size===0;
+ }finally{
+  $("searchBtn").disabled=false;
+ }
+}
+
+function renderRepos(){
+ const list=$("repoList");
+ list.innerHTML="";
+
+ const entries=[...repos.values()].slice(0,100);
+
+ for(const repo of entries){
+  const div=document.createElement("div");
+  div.className="repo";
+
+  const title=document.createElement("b");
+  title.textContent=repo.full_name;
+
+  const desc=document.createElement("p");
+  desc.className="small";
+  desc.textContent=repo.description||"暂无描述";
+
+  const meta=document.createElement("p");
+  meta.className="small";
+  meta.textContent="★ "+repo.stargazers_count+
+   " · "+(repo.language||"未知语言");
+
+  const a=document.createElement("a");
+  a.href=repo.html_url;
+  a.target="_blank";
+  a.rel="noopener";
+  a.textContent="查看仓库";
+  a.style.color="#83c1ff";
+
+  div.append(title,desc,meta,a);
+  list.appendChild(div);
+ }
+ if(repos.size>100){
+  const more=document.createElement("p");
+  more.className="small";
+  more.textContent="另有 "+(repos.size-100)+" 个仓库已收集，未全部展开。";
+  list.appendChild(more);
+ }
+}
+
+async function scanAll(){
+ fontFiles=[];
+ $("fontList").innerHTML="";
+ $("scanBtn").disabled=true;
+
+ let index=0;
+ const all=[...repos.values()];
+
+ for(const repo of all){
+  index++;
+
+  try{
+   const tree=await github(
+    "https://api.github.com/repos/"+
+    repo.full_name+"/git/trees/"+
+    encodeURIComponent(repo.default_branch)+
+    "?recursive=1"
+   );
+
+   for(const file of tree.tree||[]){
+    if(file.type!=="blob")continue;
+
+    if(!/\.(ttf|otf)$/i.test(file.path))continue;
+
+    fontFiles.push({
+     repo:repo.full_name,
+     branch:repo.default_branch,
+     path:file.path,
+     size:file.size,
+     url:"https://raw.githubusercontent.com/"+
+      repo.full_name+"/"+repo.default_branch+"/"+
+      file.path.split("/").map(encodeURIComponent).join("/")
+    });
+   }
+
+  }catch(e){
+   // 仓库可能没有树权限或默认分支
+  }
+
+  if(index%5===0){
+   $("searchStatus").textContent=
+    "仓库扫描："+index+"/"+all.length+
+    "\n发现字体文件："+fontFiles.length;
+   await wait();
+  }
+ }
+
+ renderFonts();
+
+ $("searchStatus").textContent=
+  "扫描结束。\n仓库："+all.length+
+  "\n字体文件："+fontFiles.length;
+
+ $("downloadBtn").disabled=fontFiles.length===0;
+ $("scanBtn").disabled=false;
+}
+
+function renderFonts(){
+ const list=$("fontList");
+ list.innerHTML="";
+
+ fontFiles.forEach((file,i)=>{
+  const div=document.createElement("div");
+  div.className="repo";
+
+  const cb=document.createElement("input");
+  cb.type="checkbox";
+  cb.checked=false;
+  cb.id="font"+i;
+  cb.style.width="auto";
+
+  const label=document.createElement("label");
+  label.style.display="inline";
+  label.htmlFor=cb.id;
+  label.textContent=file.path;
+
+  const info=document.createElement("p");
+  info.className="small";
+  info.textContent=file.repo+
+   "\n文件大小："+Math.round(file.size/1024)+" KB";
+
+  div.append(cb,label,info);
+  list.appendChild(div);
+ });
+}
+
+async function downloadSelected(){
+ loadedFonts=[];
+ $("downloadBtn").disabled=true;
+
+ let selected=fontFiles.filter((f,i)=>
+  $("font"+i).checked
+ );
+
+ if(!selected.length){
+  alert("请先勾选字体文件");
+  $("downloadBtn").disabled=false;
+  return;
+ }
+
+ for(let i=0;i<selected.length;i++){
+  const file=selected[i];
+
+  try{
+   if(file.size>40*1024*1024){
+    throw Error("文件超过40MB");
+   }
+
+   const res=await fetch(file.url);
+   if(!res.ok)throw Error("下载失败："+res.status);
+
+   const buffer=await res.arrayBuffer();
+   const font=opentype.parse(buffer);
+
+   loadedFonts.push({
+    font,
+    name:file.repo+"/"+file.path
+   });
+
+   message(
+    "字体下载成功："+(i+1)+"/"+selected.length+
+    "\n"+file.path+
+    "\n字形数："+font.glyphs.length
+   );
+
+  }catch(e){
+   message("下载失败："+file.path+"\n"+e.message);
+  }
+
+  await wait();
+ }
+
+ $("downloadBtn").disabled=false;
+ message("下载结束，共成功加载 "+loadedFonts.length+" 个字体。");
+}
+
+async function buildFont(){
+ if(!loadedFonts.length){
+  alert("请先下载字体");
+  return;
+ }
+
+ const name=$("fontName").value.trim();
+ const start=parseInt($("start").value.replace(/^U\+/i,""),16);
+ const end=parseInt($("end").value.replace(/^U\+/i,""),16);
+ const limit=Number($("limit").value)||0;
+
+ if(!name||!Number.isInteger(start)||
+ !Number.isInteger(end)||start<0||
+ end>0x10FFFF||start>end){
+  alert("字体名称或码位范围无效");
+  return;
+ }
+
+ $("buildBtn").disabled=true;
+ $("exportBtn").disabled=true;
+
+ const base=loadedFonts[0].font;
+ const units=base.unitsPerEm;
+
+ const glyphs=[new opentype.Glyph({
+  name:".notdef",
+  advanceWidth:units,
+  path:new opentype.Path()
+ })];
+
+ let missing=0,added=0,checked=0;
+
+ const total=end-start+1;
+
+ try{
+  for(let cp=start;cp<=end;cp++){
+   if(cp>=0xD800&&cp<=0xDFFF)continue;
+   if(limit&&added>=limit)break;
+
+   checked++;
+
+   const ch=String.fromCodePoint(cp);
+   let selected=null;
+
+   for(const source of loadedFonts){
+    const g=source.font.charToGlyph(ch);
+
+    if(g&&g.index!==0&&g.path&&
+       g.path.commands.length>0){
+     selected={g,font:source.font};
+     break;
+    }
+   }
+
+   if(selected){
+    const scale=units/selected.font.unitsPerEm;
+    const path=new opentype.Path();
+
+    path.commands=selected.g.path.commands.map(c=>{
+     const o={...c};
+     ["x","y","x1","y1","x2","y2"].forEach(k=>{
+      if(typeof o[k]==="number")o[k]*=scale;
+     });
+     return o;
+    });
+
+    const hex=cp.toString(16).toUpperCase();
+
+    glyphs.push(new opentype.Glyph({
+     name:"uni"+hex,
+     unicode:cp,
+     advanceWidth:selected.g.advanceWidth*scale,
+     leftSideBearing:selected.g.leftSideBearing*scale,
+     path
+    }));
+    added++;
+   }else{
+    missing++;
+   }
+
+   if(checked%250===0){
+    $("buildProgress").style.width=
+     Math.min(100,checked/total*100)+"%";
+
+    $("buildStatus").textContent=
+     "已检查："+checked+
+     "\n已收录："+added+
+     "\n缺失："+missing;
+
+    await wait();
+   }
+  }
+
+  if(!added)throw Error("没有找到可用字形");
+
+  outputFont=new opentype.Font({
+   familyName:name,
+   styleName:"Regular",
+   unitsPerEm:units,
+   ascender:base.ascender,
+   descender:base.descender,
+   glyphs
+  });
+
+  $("buildProgress").style.width="100%";
+  $("buildStatus").textContent=
+   "生成完成！\n"+
+   "字符数量："+added+
+   "\n缺字："+missing+
+   "\n源字体："+loadedFonts.length;
+
+  $("exportBtn").disabled=false;
+
+ }catch(e){
+  $("buildStatus").textContent="生成失败："+e.message;
+ }finally{
+  $("buildBtn").disabled=false;
+ }
+}
+
+function exportFont(){
+ if(!outputFont)return;
+
+ try{
+  const buffer=outputFont.toArrayBuffer();
+  const blob=new Blob([buffer],{type:"font/ttf"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+
+  a.href=url;
+  a.download=$("fontName").value+".ttf";
+  a.click();
+
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  message("字体导出成功！");
+ }catch(e){
+  message("导出失败："+e.message);
+ }
+}
+</script>
+
+</body>
+</html>
